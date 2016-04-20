@@ -6,8 +6,10 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
+#include "lottery.h"
 
 struct {
+  int tickets[NPROC + 1];
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
@@ -78,9 +80,12 @@ found:
 void
 userinit(void)
 {
+  int i;
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-  
+  memset(ptable.proc, 0, sizeof (ptable.proc));
+  memset(ptable.tickets, 0, sizeof (ptable.tickets));
+//  for (i = 0; i <= NPROC; i++) ptable.tickets[i] = INF;
   p = allocproc();
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
@@ -95,6 +100,7 @@ userinit(void)
   p->tf->eflags = FL_IF;
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
+  p->tickets = SYSTICKS;
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -126,7 +132,7 @@ growproc(int n)
 // Sets up stack to return as if from system call.
 // Caller must set state of returned proc to RUNNABLE.
 int
-fork(void)
+fork(int numtick)
 {
   int i, pid;
   struct proc *np;
@@ -145,6 +151,7 @@ fork(void)
   np->sz = proc->sz;
   np->parent = proc;
   *np->tf = *proc->tf;
+  np->tickets = max(min(numtick, MAXTICKS), MINTICKS);
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -254,6 +261,31 @@ wait(void)
   }
 }
 
+void uptick(int i, int qtty) {
+    int j;
+    for (j = i; j < NPROC; j += j & -j)
+        ptable.tickets[j] += qtty;
+}
+
+int ticount(int i) {
+    int j, count = 0;
+    for (j = i; j > 0; j -= j & -j)
+        count += ptable.tickets[j];
+    return count;
+}
+
+int
+bsproc(int ticket)
+{
+  int lo = 0, hi = NPROC - 1, mid;
+  while (lo < hi) {
+      mid = lo + (hi - lo) / 2;
+      if (ticount(mid) >= ticket) hi = mid;
+      else lo = mid + 1;
+  }
+  return lo;
+}
+
 //PAGEBREAK: 42
 // Per-CPU process scheduler.
 // Each CPU calls scheduler() after setting itself up.
@@ -273,23 +305,22 @@ scheduler(void)
 
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    for(p = ptable.proc; p < &ptable.proc[NPROC]; p++){
-      if(p->state != RUNNABLE)
-        continue;
-
-      // Switch to chosen process.  It is the process's job
-      // to release ptable.lock and then reacquire it
-      // before jumping back to us.
-      proc = p;
-      switchuvm(p);
-      p->state = RUNNING;
-      swtch(&cpu->scheduler, proc->context);
-      switchkvm();
-
-      // Process is done running for now.
-      // It should have changed its p->state before coming back.
-      proc = 0;
+    do {
+      p = &ptable.proc[bsproc(rand() % NPROC)];
     }
+    while (p->state != RUNNABLE);
+    // Switch to chosen process.  It is the process's job
+    // to release ptable.lock and then reacquire it
+    // before jumping back to us.
+    proc = p;
+    switchuvm(p);
+    p->state = RUNNING;
+    swtch(&cpu->scheduler, proc->context);
+    switchkvm();
+
+    // Process is done running for now.
+    // It should have changed its p->state before coming back.
+    proc = 0;
     release(&ptable.lock);
 
   }
@@ -371,6 +402,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   proc->chan = chan;
   proc->state = SLEEPING;
+  uptick(proc->pid + 1, -proc->tickets);
   sched();
 
   // Tidy up.
@@ -392,8 +424,10 @@ wakeup1(void *chan)
   struct proc *p;
 
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    if(p->state == SLEEPING && p->chan == chan)
+    if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
+      uptick(p->pid + 1, p->tickets);
+    }
 }
 
 // Wake up all processes sleeping on chan.

@@ -10,7 +10,9 @@
 int
 sys_fork(void)
 {
-  return fork();
+  int ticks;
+  argint(1, &ticks);
+  return fork(ticks);
 }
 
 int

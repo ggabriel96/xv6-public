@@ -10,6 +10,7 @@ OBJS = \
 	kbd.o\
 	lapic.o\
 	log.o\
+	lottery.o\
 	main.o\
 	mp.o\
 	picirq.o\

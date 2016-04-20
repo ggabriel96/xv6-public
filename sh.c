@@ -3,6 +3,7 @@
 #include "types.h"
 #include "user.h"
 #include "fcntl.h"
+#include "lottery.h"
 
 // Parsed command representation
 #define EXEC  1
@@ -184,7 +185,7 @@ fork1(void)
 {
   int pid;
   
-  pid = fork();
+  pid = fork(SYSTICKS);
   if(pid == -1)
     panic("fork");
   return pid;
