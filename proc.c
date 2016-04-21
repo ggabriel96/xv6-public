@@ -9,6 +9,7 @@
 #include "lottery.h"
 
 struct {
+  int deadstack[NPROC], top;
   int tickets[NPROC + 1];
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -21,6 +22,31 @@ extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
+
+void uptick(int i, int qtty) {
+    int j;
+    for (j = i; j <= NPROC; j += j & -j)
+        ptable.tickets[j] += qtty;
+}
+
+int ticount(int i) {
+    int j, count = 0;
+    for (j = i; j > 0; j -= j & -j)
+        count += ptable.tickets[j];
+    return count;
+}
+
+int
+bsproc(int ticket)
+{
+  int lo = 1, hi = NPROC, mid;
+  while (lo < hi) {
+      mid = lo + (hi - lo) / 2;
+      if (ticount(mid) >= ticket) hi = mid;
+      else lo = mid + 1;
+  }
+  return lo;
+}
 
 void
 pinit(void)
@@ -80,12 +106,11 @@ found:
 void
 userinit(void)
 {
-  int i;
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-  memset(ptable.proc, 0, sizeof (ptable.proc));
+  for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
+    ptable.deadstack[ptable.top] = NPROC - ptable.top;
   memset(ptable.tickets, 0, sizeof (ptable.tickets));
-//  for (i = 0; i <= NPROC; i++) ptable.tickets[i] = INF;
   p = allocproc();
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
@@ -101,6 +126,8 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
   p->tickets = SYSTICKS;
+  p->tindex = ptable.deadstack[--ptable.top];
+  uptick(p->tindex, p->tickets);
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -152,6 +179,8 @@ fork(int numtick)
   np->parent = proc;
   *np->tf = *proc->tf;
   np->tickets = max(min(numtick, MAXTICKS), MINTICKS);
+  np->tindex = ptable.deadstack[--ptable.top];
+  uptick(np->tindex, np->tickets);
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -214,6 +243,7 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   proc->state = ZOMBIE;
+  uptick(p->tindex, -p->tickets);
   sched();
   panic("zombie exit");
 }
@@ -245,6 +275,7 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
+        ptable.deadstack[ptable.top++] = p->tindex;
         release(&ptable.lock);
         return pid;
       }
@@ -259,31 +290,6 @@ wait(void)
     // Wait for children to exit.  (See wakeup1 call in proc_exit.)
     sleep(proc, &ptable.lock);  //DOC: wait-sleep
   }
-}
-
-void uptick(int i, int qtty) {
-    int j;
-    for (j = i; j < NPROC; j += j & -j)
-        ptable.tickets[j] += qtty;
-}
-
-int ticount(int i) {
-    int j, count = 0;
-    for (j = i; j > 0; j -= j & -j)
-        count += ptable.tickets[j];
-    return count;
-}
-
-int
-bsproc(int ticket)
-{
-  int lo = 0, hi = NPROC - 1, mid;
-  while (lo < hi) {
-      mid = lo + (hi - lo) / 2;
-      if (ticount(mid) >= ticket) hi = mid;
-      else lo = mid + 1;
-  }
-  return lo;
 }
 
 //PAGEBREAK: 42
@@ -306,7 +312,7 @@ scheduler(void)
     // Loop over process table looking for process to run.
     acquire(&ptable.lock);
     do {
-      p = &ptable.proc[bsproc(rand() % NPROC)];
+      p = &ptable.proc[bsproc(rand() % ticount(NPROC)) - 1];
     }
     while (p->state != RUNNABLE);
     // Switch to chosen process.  It is the process's job
@@ -402,7 +408,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   proc->chan = chan;
   proc->state = SLEEPING;
-  uptick(proc->pid + 1, -proc->tickets);
+  uptick(proc->tindex, -proc->tickets);
   sched();
 
   // Tidy up.
@@ -426,7 +432,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
-      uptick(p->pid + 1, p->tickets);
+      uptick(p->tindex, p->tickets);
     }
 }
 
