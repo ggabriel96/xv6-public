@@ -89,12 +89,11 @@ startothers(void)
     *(void**)(code-4) = stack + KSTACKSIZE;
     *(void**)(code-8) = mpenter;
     *(int**)(code-12) = (void *) v2p(entrypgdir);
-
+    
     lapicstartap(c->id, v2p(code));
-
+    
     // wait for cpu to finish mpmain()
-    while(c->started == 0)
-      ;
+    while(c->started == 0);
   }
 }
 

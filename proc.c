@@ -9,7 +9,9 @@
 #include "lottery.h"
 
 struct {
+  char reset;
   int deadstack[NPROC], top;
+  int pindex[NPROC + 1]; // ptable.proc index fo  
   int tickets[NPROC + 1];
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -36,6 +38,13 @@ int ticount(int i) {
     return count;
 }
 
+void printbit() {
+  int i;
+  for (i = 1; i <= NPROC; i++)
+    cprintf("[%d]", ticount(i));
+  cprintf("\n");
+}
+
 int
 bsproc(int ticket)
 {
@@ -45,7 +54,8 @@ bsproc(int ticket)
       if (ticount(mid) >= ticket) hi = mid;
       else lo = mid + 1;
   }
-  return lo;
+  // I can do this, scheduler has locked ptable
+  return ptable.pindex[lo];
 }
 
 void
@@ -64,16 +74,22 @@ allocproc(void)
 {
   struct proc *p;
   char *sp;
+  int i;
 
   acquire(&ptable.lock);
-  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+  for (i = 0; i < NPROC; i++) {
+//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
+    p = &ptable.proc[i];
     if(p->state == UNUSED)
       goto found;
+  }
   release(&ptable.lock);
   return 0;
 
 found:
   p->state = EMBRYO;
+  p->tindex = ptable.deadstack[--ptable.top];
+  ptable.pindex[p->tindex] = i;
   p->pid = nextpid++;
   release(&ptable.lock);
 
@@ -106,11 +122,9 @@ found:
 void
 userinit(void)
 {
+//  int i;
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
-  for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
-    ptable.deadstack[ptable.top] = NPROC - ptable.top;
-  memset(ptable.tickets, 0, sizeof (ptable.tickets));
   p = allocproc();
   initproc = p;
   if((p->pgdir = setupkvm()) == 0)
@@ -126,8 +140,9 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
   p->tickets = SYSTICKS;
-  p->tindex = ptable.deadstack[--ptable.top];
+  acquire(&ptable.lock);
   uptick(p->tindex, p->tickets);
+  release(&ptable.lock);
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
@@ -179,8 +194,6 @@ fork(int numtick)
   np->parent = proc;
   *np->tf = *proc->tf;
   np->tickets = max(min(numtick, MAXTICKS), MINTICKS);
-  np->tindex = ptable.deadstack[--ptable.top];
-  uptick(np->tindex, np->tickets);
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -197,6 +210,7 @@ fork(int numtick)
   // lock to force the compiler to emit the np->state write last.
   acquire(&ptable.lock);
   np->state = RUNNABLE;
+  uptick(np->tindex, np->tickets);
   release(&ptable.lock);
   
   return pid;
@@ -243,7 +257,7 @@ exit(void)
 
   // Jump into the scheduler, never to return.
   proc->state = ZOMBIE;
-  uptick(p->tindex, -p->tickets);
+//  uptick(p->tindex, -p->tickets);
   sched();
   panic("zombie exit");
 }
@@ -304,29 +318,39 @@ void
 scheduler(void)
 {
   struct proc *p;
+  int maxticount;
 
+  acquire(&ptable.lock);
+  if (!ptable.reset) {
+    ptable.reset = 1;
+    for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
+      ptable.deadstack[ptable.top] = NPROC - ptable.top;
+    memset(ptable.tickets, 0, sizeof (ptable.tickets));
+  }
+  release(&ptable.lock);
+  
   for(;;){
     // Enable interrupts on this processor.
     sti();
-
-    // Loop over process table looking for process to run.
     acquire(&ptable.lock);
-    do {
-      p = &ptable.proc[bsproc(rand() % ticount(NPROC)) - 1];
+    maxticount = ticount(NPROC);
+    if (maxticount != 0) {
+      p = &ptable.proc[bsproc(rand() % maxticount + 1)];
+      if (p->state == RUNNABLE) {
+        // Switch to chosen process.  It is the process's job
+        // to release ptable.lock and then reacquire it
+        // before jumping back to us.
+        uptick(p->tindex, -p->tickets);
+        proc = p;
+        switchuvm(p);
+        p->state = RUNNING;
+        swtch(&cpu->scheduler, proc->context);
+        switchkvm();
+        // Process is done running for now.
+        // It should have changed its p->state before coming back.
+        proc = 0;
+      }
     }
-    while (p->state != RUNNABLE);
-    // Switch to chosen process.  It is the process's job
-    // to release ptable.lock and then reacquire it
-    // before jumping back to us.
-    proc = p;
-    switchuvm(p);
-    p->state = RUNNING;
-    swtch(&cpu->scheduler, proc->context);
-    switchkvm();
-
-    // Process is done running for now.
-    // It should have changed its p->state before coming back.
-    proc = 0;
     release(&ptable.lock);
 
   }
@@ -358,6 +382,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
+  uptick(proc->tindex, proc->tickets);
   sched();
   release(&ptable.lock);
 }
@@ -408,7 +433,7 @@ sleep(void *chan, struct spinlock *lk)
   // Go to sleep.
   proc->chan = chan;
   proc->state = SLEEPING;
-  uptick(proc->tindex, -proc->tickets);
+//  uptick(proc->tindex, -proc->tickets);
   sched();
 
   // Tidy up.
@@ -458,8 +483,10 @@ kill(int pid)
     if(p->pid == pid){
       p->killed = 1;
       // Wake process from sleep if necessary.
-      if(p->state == SLEEPING)
+      if(p->state == SLEEPING) {
         p->state = RUNNABLE;
+        uptick(p->tindex, p->tickets);
+      }
       release(&ptable.lock);
       return 0;
     }
