@@ -11,7 +11,7 @@ int
 sys_fork(void)
 {
   int ticks;
-  argint(1, &ticks);
+  argint(0, &ticks);
   return fork(ticks);
 }
 

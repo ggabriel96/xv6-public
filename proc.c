@@ -295,6 +295,7 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         ptable.deadstack[ptable.top++] = pid;
+        p->tickets = 0;
         release(&ptable.lock);
         return pid;
       }

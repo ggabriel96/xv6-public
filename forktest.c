@@ -4,7 +4,6 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "lottery.h"
 
 #define N  1000
 
@@ -22,7 +21,7 @@ forktest(void)
   printf(1, "fork test\n");
 
   for(n=0; n<N; n++){
-    pid = fork(SYSTICKS);
+    pid = fork(DEFTICKS);
     if(pid < 0)
       break;
     if(pid == 0)

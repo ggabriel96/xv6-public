@@ -1,6 +1,5 @@
 #include "param.h"
 
-#define INF          112345678
 #define MAXTICKS     NPROC // maximum number of tickets a process is allowed to have
 #define MINTICKS     1 // mininum number of tickets a process is allowed to have
 #define SYSTICKS     MAXTICKS / 2 // number of tickets for all system processes

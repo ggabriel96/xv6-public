@@ -1,3 +1,7 @@
+#include "param.h"
+
+#define DEFTICKS NPROC / 2
+
 struct stat;
 struct rtcdate;
 
