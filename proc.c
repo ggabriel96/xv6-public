@@ -9,9 +9,9 @@
 #include "lottery.h"
 
 struct {
-  char reset;
+  // deadstack holds all the currently available pids
+  // the pid will be used to index both tickets and ptable.proc
   int deadstack[NPROC], top;
-  int pindex[NPROC + 1]; // ptable.proc index fo  
   int tickets[NPROC + 1];
   struct spinlock lock;
   struct proc proc[NPROC];
@@ -19,26 +19,31 @@ struct {
 
 static struct proc *initproc;
 
-int nextpid = 1;
 extern void forkret(void);
 extern void trapret(void);
 
 static void wakeup1(void *chan);
 
-void uptick(int i, int qtty) {
-    int j;
-    for (j = i; j <= NPROC; j += j & -j)
-        ptable.tickets[j] += qtty;
+void
+uptick(int i, int qtty)
+{
+  int j;
+  for (j = i; j <= NPROC; j += j & -j)
+      ptable.tickets[j] += qtty;
 }
 
-int ticount(int i) {
-    int j, count = 0;
-    for (j = i; j > 0; j -= j & -j)
-        count += ptable.tickets[j];
-    return count;
+int
+ticount(int i)
+{
+  int j, count = 0;
+  for (j = i; j > 0; j -= j & -j)
+    count += ptable.tickets[j];
+  return count;
 }
 
-void printbit() {
+void
+printbit()
+{
   int i;
   for (i = 1; i <= NPROC; i++)
     cprintf("[%d]", ticount(i));
@@ -55,13 +60,18 @@ bsproc(int ticket)
       else lo = mid + 1;
   }
   // I can do this, scheduler has locked ptable
-  return ptable.pindex[lo];
+  return lo - 1;
 }
 
 void
 pinit(void)
 {
   initlock(&ptable.lock, "ptable");
+  acquire(&ptable.lock);
+  for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
+    ptable.deadstack[ptable.top] = NPROC - ptable.top;
+  memset(ptable.tickets, 0, sizeof (ptable.tickets));
+  release(&ptable.lock);
 }
 
 //PAGEBREAK: 32
@@ -72,25 +82,21 @@ pinit(void)
 static struct proc*
 allocproc(void)
 {
-  struct proc *p;
-  char *sp;
   int i;
+  char *sp;
+  struct proc *p;
 
   acquire(&ptable.lock);
-  for (i = 0; i < NPROC; i++) {
-//  for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
-    p = &ptable.proc[i];
-    if(p->state == UNUSED)
-      goto found;
+  if (ptable.top > 0) {
+    p = &ptable.proc[(i = ptable.deadstack[--ptable.top]) - 1];
+    goto found;
   }
   release(&ptable.lock);
   return 0;
 
 found:
   p->state = EMBRYO;
-  p->tindex = ptable.deadstack[--ptable.top];
-  ptable.pindex[p->tindex] = i;
-  p->pid = nextpid++;
+  p->pid = i;
   release(&ptable.lock);
 
   // Allocate kernel stack.
@@ -141,7 +147,7 @@ userinit(void)
   p->tf->eip = 0;  // beginning of initcode.S
   p->tickets = SYSTICKS;
   acquire(&ptable.lock);
-  uptick(p->tindex, p->tickets);
+  uptick(p->pid, p->tickets);
   release(&ptable.lock);
 
   safestrcpy(p->name, "initcode", sizeof(p->name));
@@ -210,7 +216,7 @@ fork(int numtick)
   // lock to force the compiler to emit the np->state write last.
   acquire(&ptable.lock);
   np->state = RUNNABLE;
-  uptick(np->tindex, np->tickets);
+  uptick(np->pid, np->tickets);
   release(&ptable.lock);
   
   return pid;
@@ -288,7 +294,7 @@ wait(void)
         p->parent = 0;
         p->name[0] = 0;
         p->killed = 0;
-        ptable.deadstack[ptable.top++] = p->tindex;
+        ptable.deadstack[ptable.top++] = pid;
         release(&ptable.lock);
         return pid;
       }
@@ -319,27 +325,17 @@ scheduler(void)
   struct proc *p;
   int maxticount;
 
-  acquire(&ptable.lock);
-  if (!ptable.reset) {
-    ptable.reset = 1;
-    for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
-      ptable.deadstack[ptable.top] = NPROC - ptable.top;
-    memset(ptable.tickets, 0, sizeof (ptable.tickets));
-  }
-  release(&ptable.lock);
-  
   for(;;){
     // Enable interrupts on this processor.
     sti();
     acquire(&ptable.lock);
-    maxticount = ticount(NPROC);
-    if (maxticount != 0) {
+    if ((maxticount = ticount(NPROC)) != 0) {
       p = &ptable.proc[bsproc(rand() % maxticount + 1)];
       if (p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
         // to release ptable.lock and then reacquire it
         // before jumping back to us.
-        uptick(p->tindex, -p->tickets);
+        uptick(p->pid, -p->tickets);
         proc = p;
         switchuvm(p);
         p->state = RUNNING;
@@ -351,7 +347,6 @@ scheduler(void)
       }
     }
     release(&ptable.lock);
-
   }
 }
 
@@ -381,7 +376,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
-  uptick(proc->tindex, proc->tickets);
+  uptick(proc->pid, proc->tickets);
   sched();
   release(&ptable.lock);
 }
@@ -455,7 +450,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
-      uptick(p->tindex, p->tickets);
+      uptick(p->pid, p->tickets);
     }
 }
 
@@ -483,7 +478,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING) {
         p->state = RUNNABLE;
-        uptick(p->tindex, p->tickets);
+        uptick(p->pid, p->tickets);
       }
       release(&ptable.lock);
       return 0;
