@@ -27,7 +27,8 @@ main(int argc, char *argv[])
   for (t = 0; t < ITERATIONS; t++) {
     first = 1;
     for (i = 1; i <= MAXPROC; i++) {
-      ticks = rand() % MAXTICKS + 1;
+      // ticks = rand() % MAXTICKS + 1;
+      ticks = i;
       if ((pid = fork(ticks)) == 0) {
         // child code
         for (j = 0; j < TIMEOUT; j++);
@@ -35,7 +36,9 @@ main(int argc, char *argv[])
       }
       else if (pid > 0) {
         // parent code
-        mintick = min(ticks, mintick); maxtick = max(ticks, maxtick);
+        // mintick = min(ticks, mintick); maxtick = max(ticks, maxtick);
+        maxtick = ticks;
+        if (mintick == MAXTICKS + 1) mintick = ticks;
         tickets[pid - 1] = ticks;
         printf(STDOUT, "fork %d succeeded with pid %d and %d ticket%s\n", i, pid, ticks, PLURAL(ticks) ? "s" : "");
       }
@@ -55,7 +58,7 @@ main(int argc, char *argv[])
   printf(STDOUT, "mintick: %d, maxtick: %d\n", mintick, maxtick);
   for (ticks = mintick; ticks <= maxtick; ticks++)
     if (firstcount[ticks - 1] > 0)
-      printf(STDOUT, "processes with %d ticket%s finished first %d time%s\n", ticks, PLURAL(ticks) ? "s" : "",
-            firstcount[ticks - 1], PLURAL(firstcount[ticks - 1]) ? "s" : "");
+      printf(STDOUT, "processes with %d ticket%s finished first %d time%s\n",
+              ticks, PLURAL(ticks) ? "s" : "", firstcount[ticks - 1], PLURAL(firstcount[ticks - 1]) ? "s" : "");
   exit();
 }
