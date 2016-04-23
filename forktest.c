@@ -4,6 +4,7 @@
 #include "types.h"
 #include "stat.h"
 #include "user.h"
+#include "lottery.h"
 
 #define N  1000
 
