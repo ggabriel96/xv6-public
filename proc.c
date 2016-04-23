@@ -248,6 +248,7 @@ exit(void)
   proc->cwd = 0;
 
   acquire(&ptable.lock);
+  cprintf("%d\n", proc->tickets);
   // Parent might be sleeping in wait().
   wakeup1(proc->parent);
 
