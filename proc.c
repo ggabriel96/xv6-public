@@ -333,7 +333,6 @@ scheduler(void)
     if ((maxticount = ticount(NPROC)) != 0) {
       p = &ptable.proc[bsproc(rand() % maxticount + 1)];
       if (p->state == RUNNABLE) {
-        cprintf("running process %d with %d tickets\n", p->pid, p->tickets);
         // Switch to chosen process.  It is the process's job
         // to release ptable.lock and then reacquire it
         // before jumping back to us.

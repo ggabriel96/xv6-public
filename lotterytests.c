@@ -3,7 +3,7 @@
 #include "user.h"
 
 #define LOOPS 5
-#define MAX 1123456789
+#define MAX 112345678
 
 int stdout = 1;
 unsigned long randstate = 1;
