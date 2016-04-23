@@ -5,7 +5,6 @@ _*
 *.asm
 *.sym
 *.img
-*.pdf
 vectors.S
 bootblock
 entryother
@@ -15,4 +14,11 @@ kernel
 kernelmemfs
 mkfs
 .gdbinit
+
 nbproject/
+*.out
+*.aux
+*.dvi
+*.log
+*.ps
+*.pdf

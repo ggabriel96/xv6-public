@@ -9,4 +9,4 @@ pdf: tex
 	evince report.pdf &
 
 clean:
-	rm report.dvi report.ps report.pdf
+	rm report.aux report.dvi report.log report.pdf report.ps
