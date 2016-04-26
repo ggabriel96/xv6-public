@@ -127,7 +127,6 @@ found:
 void
 userinit(void)
 {
-//  int i;
   struct proc *p;
   extern char _binary_initcode_start[], _binary_initcode_size[];
   p = allocproc();
