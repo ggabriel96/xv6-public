@@ -1,0 +1,4 @@
+xv6 Lottery Scheduler report
+
+Abstract
+	This paper describes an implementation of the lottery scheduler in the xv6 operating system. Lottery scheduling is a process scheduling mechanism that randomly chooses a process to run based on its tickets (just like a lottery). The more tickets one process have, the higher the probability of it being chosen by the scheduler. In the code presented here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to efficiently count every process' ticket counts.

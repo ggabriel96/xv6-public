@@ -1,27 +1,137 @@
-\documentclass[a4paper,11pt]{article}
-\usepackage[utf8]{inputenc}
-\usepackage[T1]{fontenc}
-%\usepackage{gfsartemisia-euler}
-%\usepackage{gentium}
-%\usepackage{romande} % <<<<<<
-\usepackage{XCharter} % <<<<<<
-%\usepackage{pxfonts}
-%\usepackage[adobe-utopia]{mathdesign}
-%\usepackage{kpfonts} % Zatesko!
-%\usepackage{bera}
-%\usepackage{quattrocento}
-%\usepackage{libertine}
-%\usepackage{paratype}
-%\usepackage{xcolor}
-%\usepackage{graphicx}
+\documentclass[12pt]{article}
 
-\usepackage{geometry}
-\geometry{total={210mm,297mm},
-left=25mm,right=25mm,%
-bindingoffset=0mm, top=20mm,bottom=20mm}
+\usepackage{sbc-template}
 
-\linespread{1.15}
+\usepackage{graphicx,url}
+
+%\usepackage[brazil]{babel}
+\usepackage[latin1]{inputenc}
+
+\sloppy
+
+\title{Lottery scheduling on xv6 with basic statistical analysis}
+
+\author{Gabriel Batista Galli\inst{1}}
+
+
+\address{Federal University of Fronteira Sul (UFFS)\\
+  Mailbox 181 -- 89.802-112 -- Chapecó -- SC -- Brazil
+  \email{g7.galli96@gmail.com}}
 
 \begin{document}
-	Hey
+
+\maketitle
+
+\begin{abstract}
+This paper describes an implementation of the lottery scheduler in the
+xv6 operating system. Lottery scheduling is a process scheduling
+mechanism that randomly chooses a process to run based on its tickets
+(just like a lottery). The more tickets one process have, the higher the
+probability of it being chosen by the scheduler. In the code presented
+here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to
+efficiently count every process' amount of tickets. Then we analyze the
+scheduler behavior by looking at what order a group of processes with
+the same task, but different amounts of tickets, finish their job.
+\end{abstract}
+
+\section{Introduction}
+The xv6 operating system is a simple Unix-like teaching operating
+system developed by MIT and widely used in Operating Systems classes all
+over the world. In our class, we were assigned to implement the
+lottery scheduler on xv6, which initially had a basic First-In-First-Out
+scheduler. Every time the scheduler was to choose a process to run, it
+would linearly search through the array of processes looking for the
+first process that is ready, starting at the previously used index.
+
+The lottery scheduler is a probabilistic scheduler algorithm that works
+similarly to a real world lottery. Every process is given a certain
+amount of tickets and the scheduler randomly picks one of the available
+tickets among all processes. The process holding the chosen ticket is
+then picked to be run by the processor in the next quantum. This way, we
+can think of a process that have a high quantity of tickets as having a
+high priority, as it has a high probability of being chosen by the
+scheduler and it will thus be run more frequently than a process that
+have less ticekts.
+
+\section{The lottery scheduler} \label{sec:lottsched}
+In order to implement the lottery scheduler, a few changes were needed in
+some data structures used by xv6. The first modification was in the
+\texttt{proc} structure, found in the \texttt{proc.h} file, in which it
+was added the \texttt{tickets} attribute to hold the quantity of tickets a process was given.
+
+\begin{scriptsize}
+\begin{verbatim}
+// Per-process state
+struct proc {
+  uint sz;                     // Size of process memory (bytes)
+  pde_t* pgdir;                // Page table
+  char *kstack;                // Bottom of kernel stack for this process
+  enum procstate state;        // Process state
+  int pid;                     // Process ID
+  struct proc *parent;         // Parent process
+  struct trapframe *tf;        // Trap frame for current syscall
+  struct context *context;     // swtch() here to run process
+  void *chan;                  // If non-zero, sleeping on chan
+  int killed;                  // If non-zero, have been killed
+  struct file *ofile[NOFILE];  // Open files
+  struct inode *cwd;           // Current directory
+  char name[16];               // Process name (debugging)
+  int tickets;                 // Quantity of tickets assigned to this process
+};
+\end{verbatim}
+\end{scriptsize}
+
+Some other modifications made in the code relate to the \texttt{ptable}
+structure, found in the \texttt{proc.c} file: the \texttt{deadstack}
+array, \texttt{top} and \texttt{tickets}:
+
+\begin{scriptsize}
+\begin{verbatim}
+struct {
+  int deadstack[NPROC], top;
+  int tickets[NPROC + 1];
+  struct spinlock lock;
+  struct proc proc[NPROC];
+} ptable;
+\end{verbatim}
+\end{scriptsize}
+
+** WORK IN PROGRESS **
+
+The way that a process is given a \texttt{pid} was also
+modified. Initially, xv6 started with the variable \texttt{nextpid},
+found in the \texttt{proc.c} file, set to 1. Every time a process is
+created, it would be given that \texttt{pid} and \texttt{nexpid} is
+incremented. In this implementation with lottery scheduler, a stack
+called \texttt{deadstack} was created to store all the currently
+available \texttt{pid}s and whenever a new process is created, it will
+be identified by the \texttt{pid} found in the top of this stack. This
+was done to use the \texttt{pid} to index both the processes array and the BIT array.
+
+To keep track of every process' tickets, the \texttt{ptable.tickets} array,
+found in the \texttt{proc.c} file, was created to be used as a
+Binary Indexed Tree (BIT, also known as Fenwick Tree) to efficiently
+count how many tickets there are up until a given process (among all
+existing processes). This way, we can binary-search our tree until we find the leftmost position \texttt{i} in the \texttt{ptable.tickets} array which
+sums greater than or equal to the ticket that was picked this time
+around. This position in the BIT is the chosen process \texttt{pid}
+and is also its position in the \texttt{ptable.proc} array.
+
+\subsection{Subsections}
+
+The subsection titles must be in boldface, 12pt, flush left.
+
+\section{References}
+
+Bibliographic references must be unambiguous and uniform.  We recommend giving
+the author names references in brackets, e.g. \cite{knuth:84},
+\cite{boulic:91}, and \cite{smith:99}.
+
+The references must be listed using 12 point font size, with 6 points of space
+before each reference. The first line of each reference should not be
+indented, while the subsequent should be indented by 0.5 cm.
+
+\bibliographystyle{sbc}
+\bibliography{sbc-template}
+
 \end{document}

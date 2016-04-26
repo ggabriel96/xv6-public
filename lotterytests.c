@@ -3,7 +3,7 @@
 #include "user.h"
 
 #define STDOUT 1
-#define TESTS 2
+#define TESTS 6
 #define MAXPROC NPROC / 2
 #define TIMEOUT 112345678
 

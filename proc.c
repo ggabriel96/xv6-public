@@ -29,7 +29,7 @@ uptick(int i, int qtty)
 {
   int j;
   for (j = i; j <= NPROC; j += j & -j)
-      ptable.tickets[j] += qtty;
+    ptable.tickets[j] += qtty;
 }
 
 int
@@ -55,11 +55,10 @@ bsproc(int ticket)
 {
   int lo = 1, hi = NPROC, mid;
   while (lo < hi) {
-      mid = lo + (hi - lo) / 2;
-      if (ticount(mid) >= ticket) hi = mid;
-      else lo = mid + 1;
+    mid = lo + (hi - lo) / 2;
+    if (ticount(mid) >= ticket) hi = mid;
+    else lo = mid + 1;
   }
-  // I can do this, scheduler has locked ptable
   return lo - 1;
 }
 
