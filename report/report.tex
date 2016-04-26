@@ -51,7 +51,7 @@ then picked to be run by the processor in the next quantum. This way, we
 can think of a process that have a high quantity of tickets as having a
 high priority, as it has a high probability of being chosen by the
 scheduler and it will thus be run more frequently than a process that
-have less ticekts.
+have less tickets.
 
 \section{The lottery scheduler} \label{sec:lottsched}
 In order to implement the lottery scheduler, a few changes were needed in
@@ -83,7 +83,7 @@ struct proc {
 
 Some other modifications made in the code relate to the \texttt{ptable}
 structure, found in the \texttt{proc.c} file: the \texttt{deadstack}
-array, \texttt{top} and \texttt{tickets}:
+array (a stack), its \texttt{top} and the \texttt{tickets} array:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -96,30 +96,47 @@ struct {
 \end{verbatim}
 \end{scriptsize}
 
-** WORK IN PROGRESS **
+The \texttt{deadstack} array is a stack of the currently available
+\texttt{pid}s. When xv6 starts and the function \texttt{pinit} is
+called, \texttt{deadstack} will be initialized with all \texttt{pid}s
+from NPROC to 1 (so the \texttt{pid} 1 will be at the top, and
+the value of \texttt{top} will end up being equal to
+\texttt{NPROC}). Then, whenever a new process is created, it will be
+identified by the \texttt{pid} found on top of \texttt{deadstack}. Similarly, when a
+process dies and its position in the \texttt{proc} array is once again set to
+\texttt{UNUSED}, the \texttt{pid} that was being used by that process is
+given back to the top of \texttt{deadstack} so it can be used
+again.
 
-The way that a process is given a \texttt{pid} was also
-modified. Initially, xv6 started with the variable \texttt{nextpid},
-found in the \texttt{proc.c} file, set to 1. Every time a process is
-created, it would be given that \texttt{pid} and \texttt{nexpid} is
-incremented. In this implementation with lottery scheduler, a stack
-called \texttt{deadstack} was created to store all the currently
-available \texttt{pid}s and whenever a new process is created, it will
-be identified by the \texttt{pid} found in the top of this stack. This
-was done to use the \texttt{pid} to index both the processes array and the BIT array.
-
-To keep track of every process' tickets, the \texttt{ptable.tickets} array,
-found in the \texttt{proc.c} file, was created to be used as a
-Binary Indexed Tree (BIT, also known as Fenwick Tree) to efficiently
-count how many tickets there are up until a given process (among all
-existing processes). This way, we can binary-search our tree until we find the leftmost position \texttt{i} in the \texttt{ptable.tickets} array which
+To keep track of every process' tickets, the \texttt{tickets} array was
+created to be used as a Binary Indexed Tree (BIT, also known as Fenwick
+Tree) to efficiently count how many tickets there are up until a given
+process (among all existing processes). This way, we can binary search
+our tree until we find the leftmost position in the array that
 sums greater than or equal to the ticket that was picked this time
-around. This position in the BIT is the chosen process \texttt{pid}
-and is also its position in the \texttt{ptable.proc} array.
+around. This position in the BIT is the chosen process \texttt{pid} and,
+because of the \texttt{deadstack} way of handling \texttt{pid}s, it is
+also its position in the \texttt{proc} array. To manipulate the BIT, the functions \texttt{uptick} and
+\texttt{ticount} are used. The former updates the BIT whenever a process is
+created, executed or exits and the latter returns the sum of tickets up
+intil a given position. Just as \texttt{deadstack}, \texttt{proc} is
+initialized in the \texttt{pinit} function, where all positions are set
+to 0.
 
-\subsection{Subsections}
+\subsection{Updating the BIT}
+As said before, \texttt{uptick} is used to update the BIT whenever a
+process is created, executed or exits. It is critical that we
+don't call it any time more or less than needed, as the BIT will end up
+accumulating a wrong amount of tickets or one process will be considered
+to have more tickets than it actually does.
 
-The subsection titles must be in boldface, 12pt, flush left.
+\texttt{uptick} is then called in the functions that initialize a
+process: \texttt{userinit}, \texttt{fork}; when a process is chosen to
+be executed: \texttt{scheduler}; when a process gives up the processor
+because its time is over: \texttt{yield}; when a process is woken up:
+\texttt{wakeup1}, called by \texttt{wakeup}; and when a process is killed
+and we have to wake up the parent, if it is sleeping, so it
+\texttt{wait} for that process to \texttt{exit}: \texttt{kill}.
 
 \section{References}
 
