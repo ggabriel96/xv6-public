@@ -329,7 +329,7 @@ scheduler(void)
     // Enable interrupts on this processor.
     sti();
     acquire(&ptable.lock);
-    if ((maxticount = ticount(NPROC)) != 0) {
+    if ((maxticount = ticount(NPROC)) > 0) {
       p = &ptable.proc[bsproc(rand() % maxticount + 1)];
       if (p->state == RUNNABLE) {
         // Switch to chosen process.  It is the process's job
