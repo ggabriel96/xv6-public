@@ -37,11 +37,10 @@ the same task, but different amounts of tickets, finish their job.
 \section{Introduction}
 The xv6 operating system is a simple Unix-like teaching operating
 system developed by MIT and widely used in Operating Systems classes all
-over the world. In our class, we were assigned to implement the
-lottery scheduler on xv6, which initially had a basic First-In-First-Out
-scheduler. Every time the scheduler was to choose a process to run, it
-would linearly search through the array of processes looking for the
-first process that is ready, starting at the previously used index.
+over the world. Originally, every time the scheduler was to
+choose a process to run, it would linearly search through the array of
+processes looking for the first one that is \texttt{RUNNABLE}. In
+our class, we were assigned to implement the lottery scheduler on xv6.
 
 The lottery scheduler is a probabilistic scheduler algorithm that works
 similarly to a real world lottery. Every process is given a certain
@@ -55,9 +54,35 @@ have less tickets.
 
 \section{The lottery scheduler} \label{sec:lottsched}
 In order to implement the lottery scheduler, a few changes were needed in
-some data structures used by xv6. The first modification was in the
-\texttt{proc} structure, found in the \texttt{proc.h} file, in which it
-was added the \texttt{tickets} attribute to hold the quantity of tickets a process was given.
+some data structures used by xv6 and a new library was created, \texttt{lottery.h}:
+
+\begin{scriptsize}
+\begin{verbatim}
+#include "param.h"
+
+#define MAXTICKS     NPROC * NPROC // maximum number of tickets a process is allowed to have
+#define MINTICKS     1 // mininum number of tickets a process is allowed to have
+#define SYSTICKS     MAXTICKS / 2 // number of tickets for all system processes
+#define DEFTICKS     MAXTICKS / 2 // default number of tickets
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+
+unsigned long rand(void);
+\end{verbatim}
+\end{scriptsize}
+
+The constants defined here are used to control the maximum and minimum
+amount of tickets any process can hold. Additionally, the \texttt{SYSTICKS} is the
+constant amount of tickets that every system process receives and
+\texttt{DEFTICKS} is for the user if it does not know how many
+tickets a process should have. The \texttt{rand} is to be used when it is time to
+choose the next process to run and \texttt{min} and \texttt{max} are simple
+macros used later.
+
+Then, in the \texttt{proc.h} file, the \texttt{tickets} attribute was
+added to the structure \texttt{proc}, which describes a
+process, to hold the quantity of tickets a process has:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -116,27 +141,63 @@ our tree until we find the leftmost position in the array that
 sums greater than or equal to the ticket that was picked this time
 around. This position in the BIT is the chosen process \texttt{pid} and,
 because of the \texttt{deadstack} way of handling \texttt{pid}s, it is
-also its position in the \texttt{proc} array. To manipulate the BIT, the functions \texttt{uptick} and
+also its position in the \texttt{proc} array (but $- 1$, because
+\texttt{proc} is indexed from 0 to $\texttt{NPROC} - 1$).
+
+To manipulate the BIT, the functions \texttt{uptick} and
 \texttt{ticount} are used. The former updates the BIT whenever a process is
 created, executed or exits and the latter returns the sum of tickets up
-intil a given position. Just as \texttt{deadstack}, \texttt{proc} is
+intil a given position. Just as \texttt{deadstack}, \texttt{tickets} is
 initialized in the \texttt{pinit} function, where all positions are set
 to 0.
 
+This data structure was chosen because all operations (either getting the
+sum or updating it) cost $O(\log n)$ each. As an also $O(\log n)$ binary
+search is used to find the chosen process, rather than an $O(n)$ linear
+search, the total resulting complexity ends up being:
+
+$$O(\log{(n \times \log n)}) = O(\log n + \log{(\log n)}) = O(\log n)$$
+
+\subsection{Managing \texttt{pid}s}
+The attribution of \texttt{pid}s is done in the \texttt{allocproc}
+function, when creating a new process. As the \texttt{top} variable is
+always one position above the last valid index of the stack, we
+get it with \texttt{--ptable.top}. Likewise, we give a process' \texttt{pid} back
+to the stack in the \texttt{wait} function, but this time with \texttt{ptable.top++}.
+
 \subsection{Updating the BIT}
 As said before, \texttt{uptick} is used to update the BIT whenever a
-process is created, executed or exits. It is critical that we
-don't call it any time more or less than needed, as the BIT will end up
+process is created, executed or exits. It is critical that we don't call
+it any time more or less than needed, as the BIT will end up
 accumulating a wrong amount of tickets or one process will be considered
-to have more tickets than it actually does.
+to have more tickets than it actually does. Also note that passing a positive argument to this function increments the BIT and passing a negative argument decrements it. Incrementing is the act of giving tickets to a process and decrementing is taking them away from it (either permanently or temporarily, to avoid it being picked when it's not \texttt{RUNNABLE}).
 
-\texttt{uptick} is then called in the functions that initialize a
-process: \texttt{userinit}, \texttt{fork}; when a process is chosen to
-be executed: \texttt{scheduler}; when a process gives up the processor
-because its time is over: \texttt{yield}; when a process is woken up:
-\texttt{wakeup1}, called by \texttt{wakeup}; and when a process is killed
-and we have to wake up the parent, if it is sleeping, so it
-\texttt{wait} for that process to \texttt{exit}: \texttt{kill}.
+The BIT is updated in the functions that initialize a
+process: incrementing on \texttt{userinit} and \texttt{fork}; when a
+process is chosen to be executed: decrementing on \texttt{scheduler};
+when a process gives up the processor because its time is over:
+incrementing on \texttt{yield}; when a process is woken up: incrementing
+on \texttt{wakeup1}, called by \texttt{wakeup}; and when a process is
+killed and we have to wake up the parent, if it is sleeping, so it can
+\texttt{wait} for that process to \texttt{exit}: incrementing, for that
+parent, on \texttt{kill} (\texttt{wakeup} is not used here).
+
+\subsection{Tickets}
+As every process now needs tickets to be chosen to run and every process
+should have an amount of tickets proportional to its importance or
+priority, the user must be able to tell xv6 how many tickets its process
+will need. To accomplish this, the \texttt{fork} system call was changed so that
+it receives that amount of tickets as its sole argument.
+
+Of course, the user might want to cheat and give the highest possible
+amount of tickets to all of its processes so they run more frequently
+than everyone else. Unfortunately, we can't do anything but trust in the
+amount that we receive. The purpose of the lottery is simply run the
+available processes proportionally to their amount of tickets. There is
+no way to know how important a user process is. The only treatment done
+here is to prevent a quantity less than the minimum or more than the
+maximum (using the \texttt{min} and \texttt{max} macros). There is also the \texttt{DEFTICKS} constant that the user can
+use, which is also automatically set if we receive 0 as argument.
 
 \section{References}
 
