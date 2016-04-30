@@ -39,18 +39,17 @@ The xv6 operating system is a simple Unix-like teaching operating
 system developed by MIT and widely used in Operating Systems classes all
 over the world. Originally, every time the scheduler was to
 choose a process to run, it would linearly search through the array of
-processes looking for the first one that is \texttt{RUNNABLE}. In
+processes looking for the first one that is \texttt{RUNNABLE} \cite{xv6book}. In
 our class, we were assigned to implement the lottery scheduler on xv6.
 
-The lottery scheduler is a probabilistic scheduler algorithm that works
-similarly to a real world lottery. Every process is given a certain
-amount of tickets and the scheduler randomly picks one of the available
-tickets among all processes. The process holding the chosen ticket is
-then picked to be run by the processor in the next quantum. This way, we
-can think of a process that have a high quantity of tickets as having a
-high priority, as it has a high probability of being chosen by the
-scheduler and it will thus be run more frequently than a process that
-have less tickets.
+As seen in \cite{waldspurger:94}, the lottery scheduler is a
+probabilistic scheduler algorithm that works similarly to a real world
+lottery. Every process is given a certain amount of tickets and the
+scheduler randomly picks one of the available tickets among all
+processes. The process holding the chosen ticket is then picked to be
+run by the processor in the next quantum. This way, a process that has a
+high quantity of tickets has a high probability of being chosen by the
+scheduler and it will thus be run more frequently than a process that has less tickets.
 
 \section{The lottery scheduler} \label{sec:lottsched}
 In order to implement the lottery scheduler, a few changes were needed in
@@ -73,12 +72,13 @@ unsigned long rand(void);
 \end{scriptsize}
 
 The constants defined here are used to control the maximum and minimum
-amount of tickets any process can hold. Additionally, the \texttt{SYSTICKS} is the
-constant amount of tickets that every system process receives and
-\texttt{DEFTICKS} is for the user if it does not know how many
-tickets a process should have. The \texttt{rand} is to be used when it is time to
-choose the next process to run and \texttt{min} and \texttt{max} are simple
-macros used later.
+amount of tickets any process can hold. Additionally, the
+\texttt{SYSTICKS} is the constant amount of tickets that every system
+process receives and \texttt{DEFTICKS} is for the user if it does not
+know how many tickets a process should have. The \texttt{rand} function was
+already defined in the \texttt{usertests.c} file, but wasn't being used, so
+it was moved to this library so it can be used when it is time to choose
+the next process to run.
 
 Then, in the \texttt{proc.h} file, the \texttt{tickets} attribute was
 added to the structure \texttt{proc}, which describes a
@@ -131,7 +131,7 @@ identified by the \texttt{pid} found on top of \texttt{deadstack}. Similarly, wh
 process dies and its position in the \texttt{proc} array is once again set to
 \texttt{UNUSED}, the \texttt{pid} that was being used by that process is
 given back to the top of \texttt{deadstack} so it can be used
-again.
+again later.
 
 To keep track of every process' tickets, the \texttt{tickets} array was
 created to be used as a Binary Indexed Tree (BIT, also known as Fenwick
@@ -152,9 +152,9 @@ initialized in the \texttt{pinit} function, where all positions are set
 to 0.
 
 This data structure was chosen because all operations (either getting the
-sum or updating it) cost $O(\log n)$ each. As an also $O(\log n)$ binary
-search is used to find the chosen process, rather than an $O(n)$ linear
-search, the total resulting complexity ends up being:
+sum or updating it) cost $O(\log n)$ each \cite{halim:13}. As an also
+$O(\log n)$ binary search is used to find the chosen process, rather
+than an $O(n)$ linear search, the total resulting complexity ends up being:
 
 $$O(\log{(n \times \log n)}) = O(\log n + \log{(\log n)}) = O(\log n)$$
 
@@ -170,7 +170,12 @@ As said before, \texttt{uptick} is used to update the BIT whenever a
 process is created, executed or exits. It is critical that we don't call
 it any time more or less than needed, as the BIT will end up
 accumulating a wrong amount of tickets or one process will be considered
-to have more tickets than it actually does. Also note that passing a positive argument to this function increments the BIT and passing a negative argument decrements it. Incrementing is the act of giving tickets to a process and decrementing is taking them away from it (either permanently or temporarily, to avoid it being picked when it's not \texttt{RUNNABLE}).
+to have more tickets than it actually does. Also note that passing a
+positive argument to this function increments the BIT and passing a
+negative argument decrements it. Incrementing is the act of giving
+tickets to a process and decrementing is taking them away from it
+(either permanently or temporarily, to avoid it being picked when it's
+not \texttt{RUNNABLE}).
 
 The BIT is updated in the functions that initialize a
 process: incrementing on \texttt{userinit} and \texttt{fork}; when a
@@ -199,17 +204,48 @@ here is to prevent a quantity less than the minimum or more than the
 maximum (using the \texttt{min} and \texttt{max} macros). There is also the \texttt{DEFTICKS} constant that the user can
 use, which is also automatically set if we receive 0 as argument.
 
-\section{References}
+\section{Statistical analysis and conclusion}
+After all the modifications presented here, it is time to see if the
+scheduler is working as intended. To test it, the
+\texttt{lotterytests.c} file was created and configured as an xv6
+executable just like \texttt{usertests.c}. It works like the following:
+16 processes are created with the job of counting from 0 up to
+$10^8$. The $i^{th}$ process received $i \times NPROC$ tickets. This
+test was executed 100 times. A \texttt{cprintf} was purposely added to
+the \texttt{exit} function, in the \texttt{proc.c} file, to print the
+amount of tickets a process that just terminated had. This was later
+processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
 
-Bibliographic references must be unambiguous and uniform.  We recommend giving
-the author names references in brackets, e.g. \cite{knuth:84},
-\cite{boulic:91}, and \cite{smith:99}.
+\begin{figure}[h]
+\includegraphics[scale=0.8]{tests-crop}
+\centering
+\end{figure}
 
-The references must be listed using 12 point font size, with 6 points of space
-before each reference. The first line of each reference should not be
-indented, while the subsequent should be indented by 0.5 cm.
+Please note that the \emph{x-axis} represent the test number and the
+\emph{y-axis} is the position between 1 and 16 that a process with a
+number of tickets (represented by the color) terminated. Also take into
+account that the processes were created sequentially from the one
+holding the least amount of tickets to the one holding the highest
+amount of tickets.
+
+As a random algorithm, there is no
+guarantee in the order of execution of the processes. The only sure
+thing is that the higher the amount of tickets, the higher the
+probability of being chosen to run and the larger the amount of tests,
+the more this order will converge to the pattern established by that
+probability. Additionally, there is no way to trigger the processes all at
+once and this is also part of the reason that a process sometimes terminates
+before another one that has more tickets: it started running before. If
+the processes were created in the inverse order, from the one holding
+the highest amount of tickets to the least amount of tickets, this
+behavior would not happen so frequently.
+
+Despite that, it is clear that the processes with the highest amount of
+tickets terminated first (again, with some variation among
+those with a similar quantity of tickets), and the ones with the lowest
+amount of tickets terminated last, as we expected.
 
 \bibliographystyle{sbc}
-\bibliography{sbc-template}
+\bibliography{report}
 
 \end{document}

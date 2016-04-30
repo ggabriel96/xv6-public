@@ -1,7 +1,7 @@
 all: tex
 
 tex: sbc-template.tex
-	pdflatex sbc-template.tex
+	latex sbc-template.tex
 
 pdf: tex
 	dvips sbc-template.dvi

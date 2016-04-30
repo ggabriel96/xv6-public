@@ -13,7 +13,7 @@ main(int argc, char *argv[])
   int t, i, j;
   for (t = 0; t < TESTS; t++) {
     for (i = 1; i <= MAXPROC; i++) {
-      if (fork(i * NPROC) == 0) {
+      if (fork((MAXPROC - i + 1) * NPROC) == 0) {
         // child code
         for (j = 0; j < TIMEOUT; j++);
         exit();
