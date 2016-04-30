@@ -1,0 +1,8 @@
+Clonar o repositório:
+https://github.com/ggabriel96/xv6-public
+
+Executar xv6:
+make qemu
+
+Relatório:
+report/report.pdf

@@ -22,3 +22,5 @@ nbproject/
 *.log
 *.ps
 *.pdf
+*.bbl
+*.blg

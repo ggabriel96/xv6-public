@@ -2,8 +2,9 @@ all: tex
 
 tex: report.tex bibtex
 	latex report.tex
+	latex report.tex
 
-bibtex:
+bibtex: report.bib
 	latex report.tex
 	bibtex report.aux
 
