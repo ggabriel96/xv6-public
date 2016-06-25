@@ -6,13 +6,13 @@
 #include "x86.h"
 #include "proc.h"
 #include "spinlock.h"
-#include "lottery.h"
+#include "stride.h"
 
 struct {
   // deadstack holds all the currently available pids
   // the pid will be used to index both tickets and ptable.proc
   int deadstack[NPROC], top;
-  int tickets[NPROC + 1];
+  int minstride[4 * NPROC + 1];
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
@@ -25,41 +25,33 @@ extern void trapret(void);
 static void wakeup1(void *chan);
 
 void
-uptick(int i, int qtty)
+build(int p, int l, int r)
 {
-  int j;
-  for (j = i; j <= NPROC; j += j & -j)
-    ptable.tickets[j] += qtty;
+  int m = l + (r - l) / 2, pidl, pidr;
+  if (l == r) { ptable.minstride[p] = l; return; }
+  build(left(p), l, m); build(right(p), m + 1, r);
+  pidl = ptable.minstride[left(p)];
+  pidr = ptable.minstride[right(p)];
+  ptable.minstride[p] = pidl > 0 && pidr > 0 &&
+    ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
 }
 
 int
-ticount(int i)
+query()
 {
-  int j, count = 0;
-  for (j = i; j > 0; j -= j & -j)
-    count += ptable.tickets[j];
-  return count;
+  return ptable.minstride[1];
 }
 
 void
-printbit()
+update(int p, int l, int r, int i)
 {
-  int i;
-  for (i = 1; i <= NPROC; i++)
-    cprintf("[%d]", ticount(i));
-  cprintf("\n");
-}
-
-int
-bsproc(int ticket)
-{
-  int lo = 1, hi = NPROC, mid;
-  while (lo < hi) {
-    mid = lo + (hi - lo) / 2;
-    if (ticount(mid) >= ticket) hi = mid;
-    else lo = mid + 1;
-  }
-  return lo - 1;
+  int m = l + (r - l) / 2, pidl, pidr;
+  if (i > r || i < l || (i == l && i == r)) return;
+  update(left(p), l, m, i); update(right(p), m + 1, r, i);
+  pidl = ptable.minstride[left(p)];
+  pidr = ptable.minstride[right(p)];
+  ptable.minstride[p] = pidl > 0 && pidr > 0 &&
+    ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
 }
 
 void
@@ -67,9 +59,11 @@ pinit(void)
 {
   initlock(&ptable.lock, "ptable");
   acquire(&ptable.lock);
-  for (ptable.top = 0; ptable.top < NPROC; ptable.top++)
+  for (ptable.top = 0; ptable.top < NPROC; ptable.top++) {
     ptable.deadstack[ptable.top] = NPROC - ptable.top;
-  memset(ptable.tickets, 0, sizeof (ptable.tickets));
+    ptable.proc[ptable.top].stride = INF;
+  }
+  build(1, 0, NPROC);
   release(&ptable.lock);
 }
 
@@ -86,8 +80,9 @@ allocproc(void)
   struct proc *p;
 
   acquire(&ptable.lock);
-  if (ptable.top > 0) {
-    p = &ptable.proc[(i = ptable.deadstack[--ptable.top]) - 1];
+  if(ptable.top > 0){
+    i = ptable.deadstack[--ptable.top];
+    p = &ptable.proc[i - 1];
     goto found;
   }
   release(&ptable.lock);
@@ -144,14 +139,14 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
   p->tickets = SYSTICKS;
-  acquire(&ptable.lock);
-  uptick(p->pid, p->tickets);
-  release(&ptable.lock);
-
+  p->lstride = 0;
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
-
   p->state = RUNNABLE;
+  acquire(&ptable.lock);
+  p->stride = 0;
+  update(1, 0, NPROC, p->pid);
+  release(&ptable.lock);
 }
 
 // Grow current process's memory by n bytes.
@@ -198,6 +193,7 @@ fork(int numtick)
   np->parent = proc;
   *np->tf = *proc->tf;
   np->tickets = numtick == 0 ? DEFTICKS : max(min(numtick, MAXTICKS), MINTICKS);
+  np->lstride = 0;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -214,7 +210,8 @@ fork(int numtick)
   // lock to force the compiler to emit the np->state write last.
   acquire(&ptable.lock);
   np->state = RUNNABLE;
-  uptick(np->pid, np->tickets);
+  np->stride = 0;
+  update(1, 0, NPROC, pid);
   release(&ptable.lock);
 
   return pid;
@@ -246,7 +243,7 @@ exit(void)
   proc->cwd = 0;
 
   acquire(&ptable.lock);
-  //  cprintf("%d\n", proc->tickets);
+  cprintf("process %d dying with %d tickets\n", proc->pid, proc->tickets);
   // Parent might be sleeping in wait().
   wakeup1(proc->parent);
 
@@ -293,7 +290,9 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         ptable.deadstack[ptable.top++] = pid;
+        p->stride = INF;
         p->tickets = 0;
+        update(1, 0, NPROC, pid);
         release(&ptable.lock);
         return pid;
       }
@@ -321,29 +320,29 @@ wait(void)
 void
 scheduler(void)
 {
+  int pid;
   struct proc *p;
-  int maxticount;
 
   for(;;){
     // Enable interrupts on this processor.
     sti();
     acquire(&ptable.lock);
-    if ((maxticount = ticount(NPROC)) > 0) {
-      p = &ptable.proc[bsproc(rand() % maxticount + 1)];
-      if (p->state == RUNNABLE) {
-        // Switch to chosen process.  It is the process's job
-        // to release ptable.lock and then reacquire it
-        // before jumping back to us.
-        uptick(p->pid, -p->tickets);
-        proc = p;
-        switchuvm(p);
-        p->state = RUNNING;
-        swtch(&cpu->scheduler, proc->context);
-        switchkvm();
-        // Process is done running for now.
-        // It should have changed its p->state before coming back.
-        proc = 0;
-      }
+    if ((pid = query()) > 0) {
+      p = &ptable.proc[pid - 1];
+      // Switch to chosen process.  It is the process's job
+      // to release ptable.lock and then reacquire it
+      // before jumping back to us.
+      p->lstride = p->stride;
+      p->stride = INF;
+      update(1, 0, NPROC, pid);
+      proc = p;
+      switchuvm(p);
+      p->state = RUNNING;
+      swtch(&cpu->scheduler, proc->context);
+      switchkvm();
+      // Process is done running for now.
+      // It should have changed its p->state before coming back.
+      proc = 0;
     }
     release(&ptable.lock);
   }
@@ -375,7 +374,8 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
-  uptick(proc->pid, proc->tickets);
+  proc->stride = (proc->lstride + MAGIC / proc->tickets) % INF;
+  update(1, 0, NPROC, proc->pid);
   sched();
   release(&ptable.lock);
 }
@@ -449,7 +449,8 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
-      uptick(p->pid, p->tickets);
+      p->stride = (p->lstride + MAGIC / p->tickets) % INF;
+      update(1, 0, NPROC, p->pid);
     }
 }
 
@@ -477,7 +478,8 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING) {
         p->state = RUNNABLE;
-        uptick(p->pid, p->tickets);
+        p->stride = 0;
+        update(1, 0, NPROC, pid);
       }
       release(&ptable.lock);
       return 0;

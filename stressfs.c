@@ -12,7 +12,7 @@
 #include "user.h"
 #include "fs.h"
 #include "fcntl.h"
-#include "lottery.h"
+#include "stride.h"
 
 int
 main(int argc, char *argv[])
@@ -45,6 +45,6 @@ main(int argc, char *argv[])
   close(fd);
 
   wait();
-  
+
   exit();
 }

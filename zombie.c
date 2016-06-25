@@ -1,10 +1,10 @@
-// Create a zombie process that 
+// Create a zombie process that
 // must be reparented at exit.
 
 #include "types.h"
 #include "stat.h"
 #include "user.h"
-#include "lottery.h"
+#include "stride.h"
 
 int
 main(void)

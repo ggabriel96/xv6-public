@@ -67,6 +67,8 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   int tickets;                 // Quantity of tickets assigned to this process
+  ull stride;                  // Current stride accumulated by this process
+  ull lstride;                 // Backup of the last valid stride for this process
 };
 
 // Process memory is laid out contiguously, low addresses first:

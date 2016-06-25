@@ -1,4 +1,4 @@
-#include "lottery.h"
+#include "stride.h"
 
 unsigned long randstate = 1;
 
