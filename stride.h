@@ -6,7 +6,7 @@
 #define SYSTICKS     (MAXTICKS / 2) // number of tickets for all system processes
 #define DEFTICKS     (MAXTICKS / 2) // default number of tickets
 #define MAGIC        100000
-#define INF          9223372036854775808ull
+#define INF          18446744073709551615ull
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
