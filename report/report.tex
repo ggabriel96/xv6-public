@@ -4,18 +4,18 @@
 
 \usepackage{graphicx,url}
 
-%\usepackage[brazil]{babel}
+% \usepackage[brazil]{babel}
 \usepackage[latin1]{inputenc}
 
 \sloppy
 
-\title{Lottery scheduling on xv6 with basic statistical analysis}
+\title{Lottery and stride scheduling on xv6 with basic statistical analysis}
 
 \author{Gabriel Batista Galli\inst{1}}
 
 
 \address{Federal University of Fronteira Sul (UFFS)\\
-  Mailbox 181 -- 89.802-112 -- Chapecï¿½ -- SC -- Brazil
+  Mailbox 181 -- 89.802-112 -- Chapecó -- SC -- Brazil % chktex 8
   \email{g7.galli96@gmail.com}}
 
 \begin{document}
@@ -23,35 +23,17 @@
 \maketitle
 
 \begin{abstract}
-This paper describes an implementation of the lottery scheduler in the
-xv6 operating system. Lottery scheduling is a process scheduling
-mechanism that randomly chooses a process to run based on its tickets
-(just like a lottery). The more tickets one process have, the higher the
-probability of it being chosen by the scheduler. In the code presented
-here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to
-efficiently count every process' amount of tickets. Then we analyze the
-scheduler behavior by looking at what order a group of processes with
-the same task, but different amounts of tickets, finish their job.
+This paper describes an implementation of the lottery and stride schedulers in the xv6 operating system. Lottery scheduling is a process scheduling mechanism that randomly chooses a process to run based on its tickets (just like a lottery). The more tickets one process have, the higher the probability of it being chosen by the scheduler. In the code presented here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to efficiently count every process' amount of tickets. In the stride scheduling, a process still has tickets, but now alongside a stride and a pass. The stride is inversely proportional to its tickets, as it is the ratio between a large constant and the amount of tickets. The pass is used to accumulate the stride and to choose the next process to run: the one with the lowest pass. This way, the tickets serve the purpose of making a process run more often than others, because the higher the quantity of tickets, the lower is the stride. Here, the Segment Tree was used to implement a priority queue in order to efficiently track the changes of passes and find the next process to be executed. Finally, we analyze the scheduler behavior with both mechanisms by looking at what order a group of processes with the same task, but different amounts of tickets, finish their job.
 \end{abstract}
 
 \section{Introduction}
-The xv6 operating system is a simple Unix-like teaching operating
-system developed by MIT and widely used in Operating Systems classes all
-over the world. Originally, every time the scheduler was to
-choose a process to run, it would linearly search through the array of
-processes looking for the first one that is \texttt{RUNNABLE} \cite{xv6book}. In
-our class, we were assigned to implement the lottery scheduler on xv6.
+The xv6 operating system is a simple Unix-like teaching operating system developed by MIT and widely used in Operating Systems classes all over the world. Originally, every time the scheduler was to choose a process to run, it would linearly search through the array of processes looking for the first one that is \texttt{RUNNABLE}~\cite{xv6book}. In our class, we were assigned to implement the lottery and the stride schedulers on xv6.
 
-As seen in \cite{waldspurger:94}, the lottery scheduler is a
-probabilistic scheduler algorithm that works similarly to a real world
-lottery. Every process is given a certain amount of tickets and the
-scheduler randomly picks one of the available tickets among all
-processes. The process holding the chosen ticket is then picked to be
-run by the processor in the next quantum. This way, a process that has a
-high quantity of tickets has a high probability of being chosen by the
-scheduler and it will thus be run more frequently than a process that has less tickets.
+As seen in~\cite{waldspurger:94}, the lottery scheduler is a probabilistic scheduler algorithm that works similarly to a real world lottery. Every process is given a certain amount of tickets and the scheduler randomly picks one of the available tickets among all processes. The process holding the chosen ticket is then picked to be run by the processor in the next quantum. This way, a process that has a high quantity of tickets has a high probability of being chosen by the scheduler and it will thus be run more frequently than a process that has less tickets.
 
-\section{The lottery scheduler} \label{sec:lottsched}
+Being an improvement upon the lottery scheduler, the stride scheduler is a deterministic algorithm~\cite{waldspurger:95}. The concept of tickets is still used here, but every process now has a stride and a pass. After receiving the respective amount of tickets, a stride is assigned to the process, which is the ratio between a large predefined constant (at least equal to or greater than the maximum amount of tickets; $10^{5}$ in this case). The pass is the sum of the stride for every time that process is scheduled by the scheduler. The pass of the processes is used to determine which process among all \texttt{RUNNABLE} processes should be given the processor in the next quantum. When we have a tie, we pick the process with the lowest \texttt{pid}. This time, being a deterministic algorithm, a process with a high amount of tickets is guaranteed to run more frequently than processes with less tickets.
+
+\section{The lottery scheduler}\label{sec:lottsched}
 In order to implement the lottery scheduler, a few changes were needed in
 some data structures used by xv6 and a new library was created, \texttt{lottery.h}:
 
@@ -152,7 +134,7 @@ initialized in the \texttt{pinit} function, where all positions are set
 to 0.
 
 This data structure was chosen because all operations (either getting the
-sum or updating it) cost $O(\log n)$ each \cite{halim:13}. As an also
+sum or updating it) cost $O(\log n)$ each~\cite{halim:13}. As an also
 $O(\log n)$ binary search is used to find the chosen process, rather
 than an $O(n)$ linear search, the total resulting complexity ends up being:
 
@@ -203,6 +185,30 @@ no way to know how important a user process is. The only treatment done
 here is to prevent a quantity less than the minimum or more than the
 maximum (using the \texttt{min} and \texttt{max} macros). There is also the \texttt{DEFTICKS} constant that the user can
 use, which is also automatically set if we receive 0 as argument.
+
+\section{The stride scheduler}\label{sec:strsched}
+Making the stride scheduler work demanded a few more things in the custom library, now named \texttt{stride.h}. A \texttt{typedef} was also added in the \texttt{param.h} file to define the type \texttt{ull}, an alias for \texttt{unsigned long long int}:
+
+\begin{scriptsize}
+\begin{verbatim}
+#include "param.h"
+#include "types.h"
+
+#define MAXTICKS     (NPROC * NPROC) // maximum number of tickets a process is allowed to have
+#define MINTICKS     1               // mininum number of tickets a process is allowed to have
+#define SYSTICKS     (MAXTICKS / 2)  // number of tickets for all system processes
+#define DEFTICKS     (MAXTICKS / 2)  // default number of tickets
+#define MAGIC        100000
+#define INF          18446744073709551615ull
+
+#define min(a, b) ((a) < (b) ? (a) : (b))
+#define max(a, b) ((a) > (b) ? (a) : (b))
+#define left(x) (((x) << 1) + 1)
+#define right(x) (left(x) + 1)
+
+unsigned long rand(void);
+\end{verbatim}
+\end{scriptsize}
 
 \section{Statistical analysis and conclusion}
 After all the modifications presented here, it is time to see if the

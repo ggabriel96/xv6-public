@@ -32,7 +32,7 @@ build(int p, int l, int r)
   build(left(p), l, m); build(right(p), m + 1, r);
   pidl = ptable.minstride[left(p)];
   pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
+  ptable.minstride[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
 }
 
 void
@@ -59,7 +59,7 @@ update(int p, int l, int r, int i)
   update(left(p), l, m, i); update(right(p), m + 1, r, i);
   pidl = ptable.minstride[left(p)];
   pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
+  ptable.minstride[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
 }
 
 void
@@ -69,7 +69,7 @@ pinit(void)
   acquire(&ptable.lock);
   for (ptable.top = 0; ptable.top < NPROC; ptable.top++) {
     ptable.deadstack[ptable.top] = NPROC - ptable.top;
-    ptable.proc[ptable.top].stride = INF;
+    ptable.proc[ptable.top].pass = INF;
   }
   build(0, 1, NPROC);
   // printree();
@@ -148,12 +148,13 @@ userinit(void)
   p->tf->esp = PGSIZE;
   p->tf->eip = 0;  // beginning of initcode.S
   p->tickets = SYSTICKS;
-  p->lstride = 0;
+  p->stride = MAGIC / p->tickets;
+  p->lpass = 0;
   safestrcpy(p->name, "initcode", sizeof(p->name));
   p->cwd = namei("/");
-  p->state = RUNNABLE;
   acquire(&ptable.lock);
-  p->stride = 0;
+  p->state = RUNNABLE;
+  p->pass = p->stride;
   update(0, 1, NPROC, p->pid);
   release(&ptable.lock);
 }
@@ -202,7 +203,8 @@ fork(int numtick)
   np->parent = proc;
   *np->tf = *proc->tf;
   np->tickets = numtick == 0 ? DEFTICKS : max(min(numtick, MAXTICKS), MINTICKS);
-  np->lstride = 0;
+  np->stride = MAGIC / np->tickets;
+  np->lpass = 0;
 
   // Clear %eax so that fork returns 0 in the child.
   np->tf->eax = 0;
@@ -219,7 +221,7 @@ fork(int numtick)
   // lock to force the compiler to emit the np->state write last.
   acquire(&ptable.lock);
   np->state = RUNNABLE;
-  np->stride = 0;
+  np->pass = np->stride;
   update(0, 1, NPROC, pid);
   release(&ptable.lock);
 
@@ -299,8 +301,9 @@ wait(void)
         p->name[0] = 0;
         p->killed = 0;
         ptable.deadstack[ptable.top++] = pid;
-        p->stride = INF;
-        p->tickets = 0;
+        p->pass = INF;
+        // p->tickets = 0;
+        // p->stride = 0;
         update(0, 1, NPROC, pid);
         release(&ptable.lock);
         return pid;
@@ -340,8 +343,8 @@ scheduler(void)
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
-      p->lstride = p->stride;
-      p->stride = INF;
+      p->lpass = p->pass;
+      p->pass = INF;
       update(0, 1, NPROC, p->pid);
       proc = p;
       switchuvm(p);
@@ -382,7 +385,7 @@ yield(void)
 {
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
-  proc->stride = (proc->lstride + MAGIC / proc->tickets) % INF;
+  proc->pass = (proc->lpass + proc->stride) % INF;
   update(0, 1, NPROC, proc->pid);
   sched();
   release(&ptable.lock);
@@ -457,7 +460,7 @@ wakeup1(void *chan)
   for(p = ptable.proc; p < &ptable.proc[NPROC]; p++)
     if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
-      p->stride = (p->lstride + MAGIC / p->tickets) % INF;
+      p->pass = (p->lpass + p->stride) % INF;
       update(0, 1, NPROC, p->pid);
     }
 }
@@ -486,7 +489,7 @@ kill(int pid)
       // Wake process from sleep if necessary.
       if(p->state == SLEEPING) {
         p->state = RUNNABLE;
-        p->stride = 0;
+        p->pass = 0;
         update(0, 1, NPROC, pid);
       }
       release(&ptable.lock);
