@@ -3,7 +3,7 @@
 
 #define NPROC 16
 #define TESTS 100
-#define MAXTICKS 64 * 64
+#define MAXTICKS (64 * 64)
 
 int finish[NPROC][TESTS];
 int ticket[NPROC], indx[MAXTICKS];
