@@ -3,7 +3,7 @@
 
 #define NPROC 16
 #define TESTS 100
-#define MAXTICKS 64 * 64
+#define MAXTICKS (64 * 64)
 
 int finish[NPROC][TESTS];
 int ticket[NPROC], indx[MAXTICKS];
@@ -34,6 +34,6 @@ main(void)
   printf("xlabel(\"Test number\");\n");
   printf("ylabel(\"Finish position\");\n");
   printf("legend(\"location\", \"NorthEastOutside\");\n");
-  printf("axis(\"ij\")\n");
+  printf("axis(\"ij\");\n");
   return 0;
 }
