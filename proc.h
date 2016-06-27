@@ -67,8 +67,8 @@ struct proc {
   struct inode *cwd;           // Current directory
   char name[16];               // Process name (debugging)
   int tickets;                 // Quantity of tickets assigned to this process
-  ull stride;                  // Current stride accumulated by this process
-  ull pass;                    // Ratio between MAGIC and amount of tickets
+  ull stride;                  // Ratio between MAGIC and amount of tickets
+  ull pass;                    // Current stride accumulated by this process
   ull lpass;                   // Backup of the last valid pass for this process
 };
 

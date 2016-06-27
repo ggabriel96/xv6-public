@@ -12,7 +12,7 @@ struct {
   // deadstack holds all the currently available pids
   // the pid will be used to index both tickets and ptable.proc
   int deadstack[NPROC], top;
-  int minstride[4 * NPROC];
+  int minpass[4 * NPROC];
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
@@ -28,11 +28,11 @@ void
 build(int p, int l, int r)
 {
   int m = l + (r - l) / 2, pidl, pidr;
-  if (l == r) { ptable.minstride[p] = l; return; }
+  if (l == r) { ptable.minpass[p] = l; return; }
   build(left(p), l, m); build(right(p), m + 1, r);
-  pidl = ptable.minstride[left(p)];
-  pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
+  pidl = ptable.minpass[left(p)];
+  pidr = ptable.minpass[right(p)];
+  ptable.minpass[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
 }
 
 void
@@ -41,14 +41,14 @@ printree(void)
   int i;
   cprintf("\n--------------------\n");
   for (i = 0; i < 4 * NPROC; i++)
-    cprintf("minstride[%d]: %d\n", i, ptable.minstride[i]);
+    cprintf("minpass[%d]: %d\n", i, ptable.minpass[i]);
   cprintf("--------------------\n\n");
 }
 
 int
 query()
 {
-  return ptable.minstride[0];
+  return ptable.minpass[0];
 }
 
 void
@@ -57,9 +57,9 @@ update(int p, int l, int r, int i)
   int m = l + (r - l) / 2, pidl, pidr;
   if (i > r || i < l || (i == l && i == r)) return;
   update(left(p), l, m, i); update(right(p), m + 1, r, i);
-  pidl = ptable.minstride[left(p)];
-  pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
+  pidl = ptable.minpass[left(p)];
+  pidr = ptable.minpass[right(p)];
+  ptable.minpass[p] = ptable.proc[pidl - 1].pass <= ptable.proc[pidr - 1].pass ? pidl : pidr;
 }
 
 void

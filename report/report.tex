@@ -53,18 +53,9 @@ unsigned long rand(void);
 \end{verbatim}
 \end{scriptsize}
 
-The constants defined here are used to control the maximum and minimum
-amount of tickets any process can hold. Additionally, the
-\texttt{SYSTICKS} is the constant amount of tickets that every system
-process receives and \texttt{DEFTICKS} is for the user if it does not
-know how many tickets a process should have. The \texttt{rand} function was
-already defined in the \texttt{usertests.c} file, but wasn't being used, so
-it was moved to this library so it can be used when it is time to choose
-the next process to run.
+The constants defined here are used to control the maximum and minimum amount of tickets any process can hold. Additionally, the \texttt{SYSTICKS} is the constant amount of tickets that every system process receives and \texttt{DEFTICKS} is for the user if it does not know how many tickets a process should have. The \texttt{rand} function was already defined in the \texttt{usertests.c} file, but wasn't being used, so it was moved to this library so it can be used when it is time to choose the next process to run.
 
-Then, in the \texttt{proc.h} file, the \texttt{tickets} attribute was
-added to the structure \texttt{proc}, which describes a
-process, to hold the quantity of tickets a process has:
+Then, in the \texttt{proc.h} file, the \texttt{tickets} attribute was added to the structure \texttt{proc}, which describes a process, to hold the quantity of tickets a process has:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -88,9 +79,7 @@ struct proc {
 \end{verbatim}
 \end{scriptsize}
 
-Some other modifications made in the code relate to the \texttt{ptable}
-structure, found in the \texttt{proc.c} file: the \texttt{deadstack}
-array (a stack), its \texttt{top} and the \texttt{tickets} array:
+Some other modifications made in the code relate to the \texttt{ptable} structure, found in the \texttt{proc.c} file: the \texttt{deadstack} array (a stack), its \texttt{top} and the \texttt{tickets} array:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -103,88 +92,28 @@ struct {
 \end{verbatim}
 \end{scriptsize}
 
-The \texttt{deadstack} array is a stack of the currently available
-\texttt{pid}s. When xv6 starts and the function \texttt{pinit} is
-called, \texttt{deadstack} will be initialized with all \texttt{pid}s
-from NPROC to 1 (so the \texttt{pid} 1 will be at the top, and
-the value of \texttt{top} will end up being equal to
-\texttt{NPROC}). Then, whenever a new process is created, it will be
-identified by the \texttt{pid} found on top of \texttt{deadstack}. Similarly, when a
-process dies and its position in the \texttt{proc} array is once again set to
-\texttt{UNUSED}, the \texttt{pid} that was being used by that process is
-given back to the top of \texttt{deadstack} so it can be used
-again later.
+The \texttt{deadstack} array is a stack of the currently available \texttt{pid}s. When xv6 starts and the function \texttt{pinit} is called, \texttt{deadstack} will be initialized with all \texttt{pid}s from NPROC to 1 (so the \texttt{pid} 1 will be at the top, and the value of \texttt{top} will end up being equal to \texttt{NPROC}). Then, whenever a new process is created, it will be identified by the \texttt{pid} found on top of \texttt{deadstack}. Similarly, when a process dies and its position in the \texttt{proc} array is once again set to \texttt{UNUSED}, the \texttt{pid} that was being used by that process is given back to the top of \texttt{deadstack} so it can be used again later.
 
-To keep track of every process' tickets, the \texttt{tickets} array was
-created to be used as a Binary Indexed Tree (BIT, also known as Fenwick
-Tree) to efficiently count how many tickets there are up until a given
-process (among all existing processes). This way, we can binary search
-our tree until we find the leftmost position in the array that
-sums greater than or equal to the ticket that was picked this time
-around. This position in the BIT is the chosen process \texttt{pid} and,
-because of the \texttt{deadstack} way of handling \texttt{pid}s, it is
-also its position in the \texttt{proc} array (but $- 1$, because
-\texttt{proc} is indexed from 0 to $\texttt{NPROC} - 1$).
+To keep track of every process' tickets, the \texttt{tickets} array was created to be used as a Binary Indexed Tree (BIT, also known as Fenwick Tree) to efficiently count how many tickets there are up until a given process (among all existing processes). This way, we can binary search our tree until we find the leftmost position in the array that sums greater than or equal to the ticket that was picked this time around. This position in the BIT is the chosen process \texttt{pid} and, because of the \texttt{deadstack} way of handling \texttt{pid}s, it is also its position in the \texttt{proc} array (but $- 1$, because \texttt{proc} is indexed from 0 to $\texttt{NPROC} - 1$).
 
-To manipulate the BIT, the functions \texttt{uptick} and
-\texttt{ticount} are used. The former updates the BIT whenever a process is
-created, executed or exits and the latter returns the sum of tickets up
-until a given position. Just as \texttt{deadstack}, \texttt{tickets} is
-initialized in the \texttt{pinit} function, where all positions are set
-to 0.
+To manipulate the BIT, the functions \texttt{uptick} and \texttt{ticount} are used. The former updates the BIT whenever a process is created, executed or exits and the latter returns the sum of tickets up until a given position. Just as \texttt{deadstack}, \texttt{tickets} is initialized in the \texttt{pinit} function, where all positions are set to 0.
 
-This data structure was chosen because all operations (either getting the
-sum or updating it) cost $O(\log n)$ each~\cite{halim:13}. As an also
-$O(\log n)$ binary search is used to find the chosen process, rather
-than an $O(n)$ linear search, the total resulting complexity ends up being:
+This data structure was chosen because all operations (either getting the sum or updating it) cost $O(\log n)$ each~\cite{halim:13}. As an also $O(\log n)$ binary search is used to find the chosen process, rather than an $O(n)$ linear search, the total resulting complexity ends up being:
 
 $$O(\log n \times \log n) = O(\log^2 n)$$
 
 \subsection{Managing \texttt{pid}s}
-The attribution of \texttt{pid}s is done in the \texttt{allocproc}
-function, when creating a new process. As the \texttt{top} variable is
-always one position above the last valid index of the stack, we
-get it with \texttt{--ptable.top}. Likewise, we give a process' \texttt{pid} back
-to the stack in the \texttt{wait} function, but this time with \texttt{ptable.top++}.
+The attribution of \texttt{pid}s is done in the \texttt{allocproc} function, when creating a new process. As the \texttt{top} variable is always one position above the last valid index of the stack, we get it with \texttt{--ptable.top}. Likewise, we give a process' \texttt{pid} back to the stack in the \texttt{wait} function, but this time with \texttt{ptable.top++}.
 
 \subsection{Updating the BIT}
-As said before, \texttt{uptick} is used to update the BIT whenever a
-process is created, executed or exits. It is critical that we don't call
-it any time more or less than needed, as the BIT will end up
-accumulating a wrong amount of tickets or one process will be considered
-to have more tickets than it actually does. Also note that passing a
-positive argument to this function increments the BIT and passing a
-negative argument decrements it. Incrementing is the act of giving
-tickets to a process and decrementing is taking them away from it
-(either permanently or temporarily, to avoid it being picked when it's
-not \texttt{RUNNABLE}).
+As said before, \texttt{uptick} is used to update the BIT whenever a process is created, executed or exits. It is critical that we don't call it any time more or less than needed, as the BIT will end up accumulating a wrong amount of tickets or one process will be considered to have more tickets than it actually does. Also note that passing a positive argument to this function increments the BIT and passing a negative argument decrements it. Incrementing is the act of giving tickets to a process and decrementing is taking them away from it (either permanently or temporarily, to avoid it being picked when it's not \texttt{RUNNABLE}).
 
-The BIT is updated in the functions that initialize a
-process: incrementing on \texttt{userinit} and \texttt{fork}; when a
-process is chosen to be executed: decrementing on \texttt{scheduler};
-when a process gives up the processor because its time is over:
-incrementing on \texttt{yield}; when a process is woken up: incrementing
-on \texttt{wakeup1}, called by \texttt{wakeup}; and when a process is
-killed and we have to wake up the parent, if it is sleeping, so it can
-\texttt{wait} for that process to \texttt{exit}: incrementing, for that
-parent, on \texttt{kill} (\texttt{wakeup} is not used here).
+The BIT is updated in the functions that initialize a process: incrementing on \texttt{userinit} and \texttt{fork}; when a process is chosen to be executed: decrementing on \texttt{scheduler}; when a process gives up the processor because its time is over: incrementing on \texttt{yield}; when a process is woken up: incrementing on \texttt{wakeup1}, called by \texttt{wakeup}; and when a process is killed and we have to wake up the parent, if it is sleeping, so it can \texttt{wait} for that process to \texttt{exit}: incrementing, for that parent, on \texttt{kill} (\texttt{wakeup} is not used here).
 
 \subsection{Tickets}
-As every process now needs tickets to be chosen to run and every process
-should have an amount of tickets proportional to its importance or
-priority, the user must be able to tell xv6 how many tickets its process
-will need. To accomplish this, the \texttt{fork} system call was changed so that
-it receives that amount of tickets as its sole argument.
+As every process now needs tickets to be chosen to run and every process should have an amount of tickets proportional to its importance or priority, the user must be able to tell xv6 how many tickets its process will need. To accomplish this, the \texttt{fork} system call was changed so that it receives that amount of tickets as its sole argument.
 
-Of course, the user might want to cheat and give the highest possible
-amount of tickets to all of its processes so they run more frequently
-than everyone else. Unfortunately, we can't do anything but trust in the
-amount that we receive. The purpose of the lottery is simply run the
-available processes proportionally to their amount of tickets. There is
-no way to know how important a user process is. The only treatment done
-here is to prevent a quantity less than the minimum or more than the
-maximum (using the \texttt{min} and \texttt{max} macros). There is also the \texttt{DEFTICKS} constant that the user can
-use, which is also automatically set if we receive 0 as argument.
+Of course, the user might want to cheat and give the highest possible amount of tickets to all of its processes so they run more frequently than everyone else. Unfortunately, we can't do anything but trust in the amount that we receive. The purpose of the lottery is simply run the available processes proportionally to their amount of tickets. There is no way to know how important a user process is. The only treatment done here is to prevent a quantity less than the minimum or more than the maximum (using the \texttt{min} and \texttt{max} macros). There is also the \texttt{DEFTICKS} constant that the user can use, which is also automatically set if we receive 0 as argument.
 
 \section{The stride scheduler}\label{sec:strsched}
 Making the stride scheduler work demanded a few more things in the custom library, now named \texttt{stride.h}. A \texttt{typedef} was also added in the \texttt{param.h} file to define the type \texttt{ull}, an alias for \texttt{unsigned long long int}:
@@ -210,46 +139,63 @@ unsigned long rand(void);
 \end{verbatim}
 \end{scriptsize}
 
+As you'd expect, the constants refined in the previous \texttt{lottery.h} library were kept. In addition to them, we have \texttt{MAGIC}, the constant that is used to calculate the stride, and \texttt{INF}, the inifinity constant ($2^{64} - 1$). The infinity is a value that no \texttt{RUNNABLE} process should ever hold as its pass (that is why we increment the pass modulo infinity). All passes are also set to infinity at \texttt{pinit} and whenever a process is \texttt{RUNNING} or \texttt{SLEEPING}.
+
+Similarly, the structure of a process in \texttt{proc.h} was also kept, but as said before, variables to hold the stride and the pass were added. Beyond that, it is needed to backup the last valid pass of every process, in the variable \texttt{lpass}, so we don't lose it when we set it to infinity, as told in the paragraph above. When a process becomes \texttt{RUNNABLE} again, we use \texttt{lpass} to update the new valid pass.
+
+\begin{scriptsize}
+\begin{verbatim}
+// Per-process state
+struct proc {
+  uint sz;                     // Size of process memory (bytes)
+  pde_t* pgdir;                // Page table
+  char *kstack;                // Bottom of kernel stack for this process
+  enum procstate state;        // Process state
+  int pid;                     // Process ID
+  struct proc *parent;         // Parent process
+  struct trapframe *tf;        // Trap frame for current syscall
+  struct context *context;     // swtch() here to run process
+  void *chan;                  // If non-zero, sleeping on chan
+  int killed;                  // If non-zero, have been killed
+  struct file *ofile[NOFILE];  // Open files
+  struct inode *cwd;           // Current directory
+  char name[16];               // Process name (debugging)
+  int tickets;                 // Quantity of tickets assigned to this process
+  ull stride;                  // Ratio between MAGIC and amount of tickets
+  ull pass;                    // Current stride accumulated by this process
+  ull lpass;                   // Backup of the last valid pass for this process
+};
+\end{verbatim}
+\end{scriptsize}
+
+Moving forward, the \texttt{ptable} structure was modified again. The \texttt{deadstack} and the logic of setting and unsetting \texttt{pid}s introduced with the previous lottery implementation were maintained. But now, instead of the $NPROC + 1$-sized \texttt{tickets} array for the Fenwick Tree, we have the $4 \times NPROC$-sized \texttt{minpass} array, which is the Segment Tree. It is used as a priority queue to efficiently find the next process to run:
+
+\begin{scriptsize}
+\begin{verbatim}
+struct {
+  int deadstack[NPROC], top;
+  int minpass[4 * NPROC];
+  struct spinlock lock;
+  struct proc proc[NPROC];
+} ptable;
+\end{verbatim}
+\end{scriptsize}
+
+The Segment Tree works as follows. We initialize the pass for every process in the \texttt{pinit} function, before any process runs. Then the function \texttt{build} is called, just one time in the operating system lifetime, to initialize the whole tree. All of its leaves will each receive a \texttt{pid} from 1 to \texttt{NPROC}, in a traversal-ordered way (it means that if the leaves were a linked-list, following it, starting at the first leave, would print all \texttt{pid}s in ascending order), and every parent of the leaves will store the \texttt{pid} for the process that currently has the minimum pass. As every pass is set to infinity and the comparison is done with the $\le$ operator, the left operand will always win and we will end up having \texttt{pid} $1$ at the root.
+
 \section{Statistical analysis and conclusion}
-After all the modifications presented here, it is time to see if the
-scheduler is working as intended. To test it, the
-\texttt{lotterytests.c} file was created and configured as an xv6
-executable just like \texttt{usertests.c}. It works like the following:
-16 processes are created with the job of counting from 0 up to
-$\approx 10^8$. The $i^{th}$ process received $i \times NPROC$ tickets. This
-test was executed 100 times. A \texttt{cprintf} was purposely added to
-the \texttt{exit} function, in the \texttt{proc.c} file, to print the
-amount of tickets a process that just terminated had. This was later
-processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
+After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{lotterytests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process received $i \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
 
 \begin{figure}[h]
 \includegraphics[scale=0.8]{tests-crop}
 \centering
 \end{figure}
 
-Please note that the \emph{x-axis} represent the test number and the
-\emph{y-axis} is the position between 1 and 16 that a process with a
-number of tickets (represented by the color) terminated. Also take into
-account that the processes were created sequentially from the one
-holding the least amount of tickets to the one holding the highest
-amount of tickets.
+Please note that the \emph{x-axis} represent the test number and the \emph{y-axis} is the position between 1 and 16 that a process with a number of tickets (represented by the color) terminated. Also take into account that the processes were created sequentially from the one holding the least amount of tickets to the one holding the highest amount of tickets.
 
-As a random algorithm, there is no
-guarantee in the order of execution of the processes. The only sure
-thing is that the higher the amount of tickets, the higher the
-probability of being chosen to run and the larger the amount of tests,
-the more this order will converge to the pattern established by that
-probability. Additionally, there is no way to trigger the processes all at
-once and this is also part of the reason that a process sometimes terminates
-before another one that has more tickets: it started running before. If
-the processes were created in the inverse order, from the one holding
-the highest amount of tickets to the least amount of tickets, this
-behavior would not happen so frequently.
+As a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability. Additionally, there is no way to trigger the processes all at once and this is also part of the reason that a process sometimes terminates before another one that has more tickets: it started running before. If the processes were created in the inverse order, from the one holding the highest amount of tickets to the least amount of tickets, this behavior would not happen so frequently.
 
-Despite that, it is clear that the processes with the highest amount of
-tickets terminated first (again, with some variation among
-those with a similar quantity of tickets), and the ones with the lowest
-amount of tickets terminated last, as we expected.
+Despite that, it is clear that the processes with the highest amount of tickets terminated first (again, with some variation among those with a similar quantity of tickets), and the ones with the lowest amount of tickets terminated last, as we expected.
 
 \bibliographystyle{sbc}
 \bibliography{report}
