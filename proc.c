@@ -48,7 +48,7 @@ printree(void)
 int
 query()
 {
-  return ptable.minstride[1];
+  return ptable.minstride[0];
 }
 
 void
@@ -252,7 +252,7 @@ exit(void)
   proc->cwd = 0;
 
   acquire(&ptable.lock);
-  cprintf("process %d dying with %d tickets\n", proc->pid, proc->tickets);
+  // cprintf("process %d dying with %d tickets\n", proc->pid, proc->tickets);
   // Parent might be sleeping in wait().
   wakeup1(proc->parent);
 
