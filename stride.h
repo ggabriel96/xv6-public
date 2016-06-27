@@ -10,7 +10,7 @@
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
-#define left(x) ((x) << 1)
+#define left(x) (((x) << 1) + 1)
 #define right(x) (left(x) + 1)
 
 unsigned long rand(void);

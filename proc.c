@@ -12,7 +12,7 @@ struct {
   // deadstack holds all the currently available pids
   // the pid will be used to index both tickets and ptable.proc
   int deadstack[NPROC], top;
-  int minstride[4 * NPROC + 1];
+  int minstride[4 * NPROC];
   struct spinlock lock;
   struct proc proc[NPROC];
 } ptable;
@@ -32,8 +32,17 @@ build(int p, int l, int r)
   build(left(p), l, m); build(right(p), m + 1, r);
   pidl = ptable.minstride[left(p)];
   pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = pidl > 0 && pidr > 0 &&
-    ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
+  ptable.minstride[p] = ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
+}
+
+void
+printree(void)
+{
+  int i;
+  cprintf("\n--------------------\n");
+  for (i = 0; i < 4 * NPROC; i++)
+    cprintf("minstride[%d]: %d\n", i, ptable.minstride[i]);
+  cprintf("--------------------\n\n");
 }
 
 int
@@ -50,8 +59,7 @@ update(int p, int l, int r, int i)
   update(left(p), l, m, i); update(right(p), m + 1, r, i);
   pidl = ptable.minstride[left(p)];
   pidr = ptable.minstride[right(p)];
-  ptable.minstride[p] = pidl > 0 && pidr > 0 &&
-    ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
+  ptable.minstride[p] = ptable.proc[pidl - 1].stride <= ptable.proc[pidr - 1].stride ? pidl : pidr;
 }
 
 void
@@ -63,7 +71,8 @@ pinit(void)
     ptable.deadstack[ptable.top] = NPROC - ptable.top;
     ptable.proc[ptable.top].stride = INF;
   }
-  build(1, 0, NPROC);
+  build(0, 1, NPROC);
+  printree();
   release(&ptable.lock);
 }
 
@@ -145,7 +154,7 @@ userinit(void)
   p->state = RUNNABLE;
   acquire(&ptable.lock);
   p->stride = 0;
-  update(1, 0, NPROC, p->pid);
+  update(0, 1, NPROC, p->pid);
   release(&ptable.lock);
 }
 
@@ -211,7 +220,7 @@ fork(int numtick)
   acquire(&ptable.lock);
   np->state = RUNNABLE;
   np->stride = 0;
-  update(1, 0, NPROC, pid);
+  update(0, 1, NPROC, pid);
   release(&ptable.lock);
 
   return pid;
@@ -292,7 +301,7 @@ wait(void)
         ptable.deadstack[ptable.top++] = pid;
         p->stride = INF;
         p->tickets = 0;
-        update(1, 0, NPROC, pid);
+        update(0, 1, NPROC, pid);
         release(&ptable.lock);
         return pid;
       }
@@ -320,21 +329,20 @@ wait(void)
 void
 scheduler(void)
 {
-  int pid;
   struct proc *p;
 
   for(;;){
     // Enable interrupts on this processor.
     sti();
     acquire(&ptable.lock);
-    if ((pid = query()) > 0) {
-      p = &ptable.proc[pid - 1];
+    p = &ptable.proc[query() - 1];
+    if (p->state == RUNNABLE) {
       // Switch to chosen process.  It is the process's job
       // to release ptable.lock and then reacquire it
       // before jumping back to us.
       p->lstride = p->stride;
       p->stride = INF;
-      update(1, 0, NPROC, pid);
+      update(0, 1, NPROC, p->pid);
       proc = p;
       switchuvm(p);
       p->state = RUNNING;
@@ -375,7 +383,7 @@ yield(void)
   acquire(&ptable.lock);  //DOC: yieldlock
   proc->state = RUNNABLE;
   proc->stride = (proc->lstride + MAGIC / proc->tickets) % INF;
-  update(1, 0, NPROC, proc->pid);
+  update(0, 1, NPROC, proc->pid);
   sched();
   release(&ptable.lock);
 }
@@ -450,7 +458,7 @@ wakeup1(void *chan)
     if(p->state == SLEEPING && p->chan == chan) {
       p->state = RUNNABLE;
       p->stride = (p->lstride + MAGIC / p->tickets) % INF;
-      update(1, 0, NPROC, p->pid);
+      update(0, 1, NPROC, p->pid);
     }
 }
 
@@ -479,7 +487,7 @@ kill(int pid)
       if(p->state == SLEEPING) {
         p->state = RUNNABLE;
         p->stride = 0;
-        update(1, 0, NPROC, pid);
+        update(0, 1, NPROC, pid);
       }
       release(&ptable.lock);
       return 0;
