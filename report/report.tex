@@ -199,9 +199,11 @@ After all the modifications presented here, it is time to see if the scheduler i
 
 Please note that the \emph{x-axis} represent the test number and the \emph{y-axis} is the position between 1 and 16 that a process with a number of tickets (represented by the color) terminated. Also take into account that the processes were created sequentially from the one holding the highest amount of tickets to the one holding the least amount of tickets.
 
-As a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability.
+As the lottery scheduler is a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability.
 
 Despite that, it is clear that the processes with the highest amount of tickets terminated first (again, with some variation among those with a similar quantity of tickets), and the ones with the lowest amount of tickets terminated last, as we expected.
+
+Differently, being a deterministic algorithm, the stride scheduler has a more standardized behavior: a process with a higher amount of tickets than another process always finished its execution before.
 
 \bibliographystyle{sbc}
 \bibliography{report}

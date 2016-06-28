@@ -11,6 +11,8 @@ int
 main(int argc, char *argv[])
 {
   int t, i, j;
+  for (i = 1; i <= MAXPROC; i++)
+    printf(STDOUT, "%d%s", (MAXPROC - i + 1) * NPROC, i + 1 <= MAXPROC ? " " : "\n");
   for (t = 0; t < TESTS; t++) {
     for (i = 1; i <= MAXPROC; i++)
       if (fork((MAXPROC - i + 1) * NPROC) == 0) {
