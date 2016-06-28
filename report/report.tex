@@ -15,7 +15,7 @@
 
 
 \address{Federal University of Fronteira Sul (UFFS)\\
-  Mailbox 181 -- 89.802-112 -- Chapecó -- SC -- Brazil % chktex 8
+  Mailbox 181 -- 89.802-112 -- Chapecï¿½ -- SC -- Brazil % chktex 8
   \email{g7.galli96@gmail.com}}
 
 \begin{document}
@@ -141,7 +141,7 @@ unsigned long rand(void);
 
 As you'd expect, the constants refined in the previous \texttt{lottery.h} library were kept. In addition to them, we have \texttt{MAGIC}, the constant that is used to calculate the stride, and \texttt{INF}, the inifinity constant ($2^{64} - 1$). The infinity is a value that no \texttt{RUNNABLE} process should ever hold as its pass (that is why we increment the pass modulo infinity). All passes are also set to infinity at \texttt{pinit} and whenever a process is \texttt{RUNNING} or \texttt{SLEEPING}.
 
-Similarly, the structure of a process in \texttt{proc.h} was also kept, but as said before, variables to hold the stride and the pass were added. Beyond that, it is needed to backup the last valid pass of every process, in the variable \texttt{lpass}, so we don't lose it when we set it to infinity, as told in the paragraph above. When a process becomes \texttt{RUNNABLE} again, we use \texttt{lpass} to update the new valid pass.
+Similarly, the structure of a process in \texttt{proc.h} was also kept, but as said before, variables to hold the stride and the pass were added. Beyond that, it is needed to backup the last valid pass of every process, in the variable \texttt{lpass}, so we don't lose it when we set it to infinity, as told in the paragraph above. When a process becomes \texttt{RUNNABLE} again, we use \texttt{lpass} to set the new valid pass.
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -168,7 +168,7 @@ struct proc {
 \end{verbatim}
 \end{scriptsize}
 
-Moving forward, the \texttt{ptable} structure was modified again. The \texttt{deadstack} and the logic of setting and unsetting \texttt{pid}s introduced with the previous lottery implementation were maintained. But now, instead of the $NPROC + 1$-sized \texttt{tickets} array for the Fenwick Tree, we have the $4 \times NPROC$-sized \texttt{minpass} array, which is the Segment Tree. It is used as a priority queue to efficiently find the next process to run:
+Moving forward, the \texttt{ptable} structure was modified again. The \texttt{deadstack} and the logic of setting and unsetting \texttt{pid}s introduced with the previous lottery implementation were maintained. But now, instead of the $NPROC + 1$-sized \texttt{tickets} array for the Fenwick Tree, we have the $4 \times NPROC$-sized \texttt{minpass} array, which is the Segment Tree (please note that $4 \times NPROC$ is pretty high upper bound). It is used as a priority queue to efficiently find the next process to run:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -181,19 +181,25 @@ struct {
 \end{verbatim}
 \end{scriptsize}
 
-The Segment Tree works as follows. We initialize the pass for every process in the \texttt{pinit} function, before any process runs. Then the function \texttt{build} is called, just one time in the operating system lifetime, to initialize the whole tree. All of its leaves will each receive a \texttt{pid} from 1 to \texttt{NPROC}, in a traversal-ordered way (it means that if the leaves were a linked-list, following it, starting at the first leave, would print all \texttt{pid}s in ascending order), and every parent of the leaves will store the \texttt{pid} for the process that currently has the minimum pass. As every pass is set to infinity and the comparison is done with the $\le$ operator, the left operand will always win and we will end up having \texttt{pid} $1$ at the root.
+The Segment Tree works as follows. We initialize the pass for every process in the \texttt{pinit} function, before any process runs. Then the function \texttt{build} is called, just one time in the operating system lifetime, to initialize the whole tree. All of its leaves will each receive a \texttt{pid} from 1 to \texttt{NPROC}, in a traversal-ordered way (it means that if the leaves were a linked-list, following it, starting at the first leave, would print all \texttt{pid}s in ascending order), and every parent of the leaves will store the \texttt{pid} for the process that currently has the minimum pass. As every pass is set to infinity and the comparison is done with the $\le$ operator, the left operand will always win and we will end up having \texttt{pid} 1 at the root (index 0).
+
+When we have to find the next process to run, the \texttt{query} function simply returns \texttt{ptable.minpass[0]}.
+
+The \texttt{update} function is the one being called every time the pass of a process is changed (like when the context is switched to that process; when a process is being waken up; or even when a process is created, as its pass was just initialized). These functions have a time complexity of $O(n)$, $O(1)$ (special case here, because the Segment Tree is being used to implement a priority queue) and $O(\log n)$, respectively~\cite{halim:13}.
+
+One problem the stride scheduler suffers from is when the pass overflows the limit of the variable holding it. In this case, this is ignored because, although not solving the problem, an \texttt{unsigned} type is being used. Whenever a pass overflows, it will be as if it was reset to a small value and that process will be executed very often until the other processes start to be chosen again. A good solution for this problem wasn't found.
 
 \section{Statistical analysis and conclusion}
-After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{lotterytests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process received $i \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
+After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{tests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process received $(16 - i + 1) \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
 
 \begin{figure}[h]
 \includegraphics[scale=0.8]{tests-crop}
 \centering
 \end{figure}
 
-Please note that the \emph{x-axis} represent the test number and the \emph{y-axis} is the position between 1 and 16 that a process with a number of tickets (represented by the color) terminated. Also take into account that the processes were created sequentially from the one holding the least amount of tickets to the one holding the highest amount of tickets.
+Please note that the \emph{x-axis} represent the test number and the \emph{y-axis} is the position between 1 and 16 that a process with a number of tickets (represented by the color) terminated. Also take into account that the processes were created sequentially from the one holding the highest amount of tickets to the one holding the least amount of tickets.
 
-As a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability. Additionally, there is no way to trigger the processes all at once and this is also part of the reason that a process sometimes terminates before another one that has more tickets: it started running before. If the processes were created in the inverse order, from the one holding the highest amount of tickets to the least amount of tickets, this behavior would not happen so frequently.
+As a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability.
 
 Despite that, it is clear that the processes with the highest amount of tickets terminated first (again, with some variation among those with a similar quantity of tickets), and the ones with the lowest amount of tickets terminated last, as we expected.
 
