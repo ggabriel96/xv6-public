@@ -15,7 +15,7 @@
 
 
 \address{Federal University of Fronteira Sul (UFFS)\\
-  Mailbox 181 -- 89.802-112 -- Chapecï¿½ -- SC -- Brazil % chktex 8
+  Mailbox 181 -- 89.802-112 -- Chapecó -- SC -- Brazil % chktex 8
   \email{g7.galli96@gmail.com}}
 
 \begin{document}
@@ -23,7 +23,7 @@
 \maketitle
 
 \begin{abstract}
-This paper describes an implementation of the lottery and stride schedulers in the xv6 operating system. Lottery scheduling is a process scheduling mechanism that randomly chooses a process to run based on its tickets (just like a lottery). The more tickets one process have, the higher the probability of it being chosen by the scheduler. In the code presented here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to efficiently count every process' amount of tickets. In the stride scheduling, a process still has tickets, but now alongside a stride and a pass. The stride is inversely proportional to its tickets, as it is the ratio between a large constant and the amount of tickets. The pass is used to accumulate the stride and to choose the next process to run: the one with the lowest pass. This way, the tickets serve the purpose of making a process run more often than others, because the higher the quantity of tickets, the lower is the stride. Here, the Segment Tree was used to implement a priority queue in order to efficiently track the changes of passes and find the next process to be executed. Finally, we analyze the scheduler behavior with both mechanisms by looking at what order a group of processes with the same task, but different amounts of tickets, finish their job.
+This paper describes an implementation of the lottery and stride schedulers in the xv6 operating system. Lottery scheduling is a process scheduling mechanism that randomly chooses a process to run based on its tickets (just like a lottery). The more tickets one process have, the higher the probability of it being chosen by the scheduler. In the code presented here, the Binary Indexed Tree (BIT, or Fenwick Tree) is used to efficiently count every process' amount of tickets. In the stride scheduling, a process still has tickets, but now alongside a stride and a pass. The stride is inversely proportional to its tickets, as it is the ratio between a large constant and that amount of tickets. The pass is used to accumulate the stride and to choose the next process to run: the one with the lowest pass. This way, the tickets serve the purpose of making a process run more often than others, because the higher the quantity of tickets, the lower is the stride. Here, the Segment Tree was used to implement a priority queue in order to efficiently track the changes of passes and find the next process to be executed. Finally, we analyze the scheduler behavior with both mechanisms by looking at what order a group of processes with the same task, but different amounts of tickets, finish their job.
 \end{abstract}
 
 \section{Introduction}
@@ -41,10 +41,10 @@ some data structures used by xv6 and a new library was created, \texttt{lottery.
 \begin{verbatim}
 #include "param.h"
 
-#define MAXTICKS     NPROC * NPROC // maximum number of tickets a process is allowed to have
-#define MINTICKS     1 // mininum number of tickets a process is allowed to have
-#define SYSTICKS     MAXTICKS / 2 // number of tickets for all system processes
-#define DEFTICKS     MAXTICKS / 2 // default number of tickets
+#define MAXTICKS (NPROC * NPROC) // maximum allowed number of tickets
+#define MINTICKS 1               // mininum allowed number of tickets
+#define SYSTICKS (MAXTICKS / 2)  // number of tickets for all system processes
+#define DEFTICKS (MAXTICKS / 2)  // default number of tickets
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -61,20 +61,20 @@ Then, in the \texttt{proc.h} file, the \texttt{tickets} attribute was added to t
 \begin{verbatim}
 // Per-process state
 struct proc {
-  uint sz;                     // Size of process memory (bytes)
-  pde_t* pgdir;                // Page table
-  char *kstack;                // Bottom of kernel stack for this process
-  enum procstate state;        // Process state
-  int pid;                     // Process ID
-  struct proc *parent;         // Parent process
-  struct trapframe *tf;        // Trap frame for current syscall
-  struct context *context;     // swtch() here to run process
-  void *chan;                  // If non-zero, sleeping on chan
-  int killed;                  // If non-zero, have been killed
-  struct file *ofile[NOFILE];  // Open files
-  struct inode *cwd;           // Current directory
-  char name[16];               // Process name (debugging)
-  int tickets;                 // Quantity of tickets assigned to this process
+  uint sz;                    // Size of process memory (bytes)
+  pde_t* pgdir;               // Page table
+  char *kstack;               // Bottom of kernel stack for this process
+  enum procstate state;       // Process state
+  int pid;                    // Process ID
+  struct proc *parent;        // Parent process
+  struct trapframe *tf;       // Trap frame for current syscall
+  struct context *context;    // swtch() here to run process
+  void *chan;                 // If non-zero, sleeping on chan
+  int killed;                 // If non-zero, have been killed
+  struct file *ofile[NOFILE]; // Open files
+  struct inode *cwd;          // Current directory
+  char name[16];              // Process name (debugging)
+  int tickets;                // Quantity of tickets assigned to this process
 };
 \end{verbatim}
 \end{scriptsize}
@@ -94,9 +94,9 @@ struct {
 
 The \texttt{deadstack} array is a stack of the currently available \texttt{pid}s. When xv6 starts and the function \texttt{pinit} is called, \texttt{deadstack} will be initialized with all \texttt{pid}s from NPROC to 1 (so the \texttt{pid} 1 will be at the top, and the value of \texttt{top} will end up being equal to \texttt{NPROC}). Then, whenever a new process is created, it will be identified by the \texttt{pid} found on top of \texttt{deadstack}. Similarly, when a process dies and its position in the \texttt{proc} array is once again set to \texttt{UNUSED}, the \texttt{pid} that was being used by that process is given back to the top of \texttt{deadstack} so it can be used again later.
 
-To keep track of every process' tickets, the \texttt{tickets} array was created to be used as a Binary Indexed Tree (BIT, also known as Fenwick Tree) to efficiently count how many tickets there are up until a given process (among all existing processes). This way, we can binary search our tree until we find the leftmost position in the array that sums greater than or equal to the ticket that was picked this time around. This position in the BIT is the chosen process \texttt{pid} and, because of the \texttt{deadstack} way of handling \texttt{pid}s, it is also its position in the \texttt{proc} array (but $- 1$, because \texttt{proc} is indexed from 0 to $\texttt{NPROC} - 1$).
+To keep track of every process' tickets, the \texttt{tickets} array was created to be used as a Binary Indexed Tree (BIT, also known as Fenwick Tree) to efficiently count how many tickets there are up until a given process (among all existing processes). This way, we can binary search our tree until we find the leftmost position in the array that sums greater than or equal to the ticket that was picked this time around. This position in the BIT is the chosen process \texttt{pid} and also its position in the \texttt{proc} array (but $- 1$, because \texttt{proc} is indexed from 0 to $\texttt{NPROC} - 1$).
 
-To manipulate the BIT, the functions \texttt{uptick} and \texttt{ticount} are used. The former updates the BIT whenever a process is created, executed or exits and the latter returns the sum of tickets up until a given position. Just as \texttt{deadstack}, \texttt{tickets} is initialized in the \texttt{pinit} function, where all positions are set to 0.
+To manipulate the BIT, the functions \texttt{uptick} and \texttt{ticount} are used. The former updates the BIT whenever a process is created, executed or exits and the latter returns the sum of tickets up until a given position. Just as \texttt{deadstack}, \texttt{tickets} is initialized in the \texttt{pinit} function, wherein all positions are set to 0.
 
 This data structure was chosen because all operations (either getting the sum or updating it) cost $O(\log n)$ each~\cite{halim:13}. As an also $O(\log n)$ binary search is used to find the chosen process, rather than an $O(n)$ linear search, the total resulting complexity ends up being:
 
@@ -123,12 +123,12 @@ Making the stride scheduler work demanded a few more things in the custom librar
 #include "param.h"
 #include "types.h"
 
-#define MAXTICKS     (NPROC * NPROC) // maximum number of tickets a process is allowed to have
-#define MINTICKS     1               // mininum number of tickets a process is allowed to have
-#define SYSTICKS     (MAXTICKS / 2)  // number of tickets for all system processes
-#define DEFTICKS     (MAXTICKS / 2)  // default number of tickets
-#define MAGIC        100000
-#define INF          18446744073709551615ull
+#define MAXTICKS (NPROC * NPROC) // maximum allowed number of tickets
+#define MINTICKS 1               // mininum allowed number of tickets
+#define SYSTICKS (MAXTICKS / 2)  // number of tickets for all system processes
+#define DEFTICKS (MAXTICKS / 2)  // default number of tickets
+#define MAGIC    100000
+#define INF      18446744073709551615ull
 
 #define min(a, b) ((a) < (b) ? (a) : (b))
 #define max(a, b) ((a) > (b) ? (a) : (b))
@@ -139,9 +139,11 @@ unsigned long rand(void);
 \end{verbatim}
 \end{scriptsize}
 
-As you'd expect, the constants refined in the previous \texttt{lottery.h} library were kept. In addition to them, we have \texttt{MAGIC}, the constant that is used to calculate the stride, and \texttt{INF}, the inifinity constant ($2^{64} - 1$). The infinity is a value that no \texttt{RUNNABLE} process should ever hold as its pass (that is why we increment the pass modulo infinity). All passes are also set to infinity at \texttt{pinit} and whenever a process is \texttt{RUNNING} or \texttt{SLEEPING}.
+As you'd expect, the constants refined in the previous \texttt{lottery.h} library were kept. In addition to them, we have \texttt{MAGIC}, the constant that is used to calculate the stride, and \texttt{INF}, the inifinity constant ($2^{64} - 1$). The infinity is a value that no \texttt{RUNNABLE} process should ever hold as its pass (that is why we increment the pass modulo infinity). All passes are also set to infinity by \texttt{pinit} and whenever a process is \texttt{RUNNING} or \texttt{SLEEPING}.
 
 Similarly, the structure of a process in \texttt{proc.h} was also kept, but as said before, variables to hold the stride and the pass were added. Beyond that, it is needed to backup the last valid pass of every process, in the variable \texttt{lpass}, so we don't lose it when we set it to infinity, as told in the paragraph above. When a process becomes \texttt{RUNNABLE} again, we use \texttt{lpass} to set the new valid pass.
+
+\newpage
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -168,7 +170,7 @@ struct proc {
 \end{verbatim}
 \end{scriptsize}
 
-Moving forward, the \texttt{ptable} structure was modified again. The \texttt{deadstack} and the logic of setting and unsetting \texttt{pid}s introduced with the previous lottery implementation were maintained. But now, instead of the $NPROC + 1$-sized \texttt{tickets} array for the Fenwick Tree, we have the $4 \times NPROC$-sized \texttt{minpass} array, which is the Segment Tree (please note that $4 \times NPROC$ is pretty high upper bound). It is used as a priority queue to efficiently find the next process to run:
+Moving forward, the \texttt{ptable} structure was modified again. The \texttt{deadstack} and the logic of setting and unsetting \texttt{pid}s introduced by the previous lottery implementation has been maintained. But now, instead of the $NPROC + 1$-sized \texttt{tickets} array for the Fenwick Tree, we have the $4 \times NPROC$-sized \texttt{minpass} array, which is the Segment Tree (please note that $4 \times NPROC$ is pretty high upper bound). It is used as a priority queue to efficiently find the next process to run:
 
 \begin{scriptsize}
 \begin{verbatim}
@@ -181,16 +183,16 @@ struct {
 \end{verbatim}
 \end{scriptsize}
 
-The Segment Tree works as follows. We initialize the pass for every process in the \texttt{pinit} function, before any process runs. Then the function \texttt{build} is called, just one time in the operating system lifetime, to initialize the whole tree. All of its leaves will each receive a \texttt{pid} from 1 to \texttt{NPROC}, in a traversal-ordered way (it means that if the leaves were a linked-list, following it, starting at the first leave, would print all \texttt{pid}s in ascending order), and every parent of the leaves will store the \texttt{pid} for the process that currently has the minimum pass. As every pass is set to infinity and the comparison is done with the $\le$ operator, the left operand will always win and we will end up having \texttt{pid} 1 at the root (index 0).
+The Segment Tree works as follows. We initialize the pass for every process in the \texttt{pinit} function, before any process runs. Then the function \texttt{build} is called, just one time in the operating system lifetime, to initialize the whole tree. All of its leaves will each receive a \texttt{pid} from 1 to \texttt{NPROC}, in a traversal-ordered way (it means that if the leaves were a linked-list, following it, starting at the first leave, would print all \texttt{pid}s in ascending order), and every parent of the leaves will store the \texttt{pid} for the process that currently has the minimum pass. As every pass is set to infinity and the comparison is done with the $\le$ operator, the left operand will always win and we will end up having \texttt{pid} 1 at the root (index 0). The left and right children of a node are reached with \texttt{LEFT} and \texttt{RIGHT} macros.
 
 When we have to find the next process to run, the \texttt{query} function simply returns \texttt{ptable.minpass[0]}.
 
 The \texttt{update} function is the one being called every time the pass of a process is changed (like when the context is switched to that process; when a process is being waken up; or even when a process is created, as its pass was just initialized). These functions have a time complexity of $O(n)$, $O(1)$ (special case here, because the Segment Tree is being used to implement a priority queue) and $O(\log n)$, respectively~\cite{halim:13}.
 
-One problem the stride scheduler suffers from is when the pass overflows the limit of the variable holding it. In this case, this is ignored because, although not solving the problem, an \texttt{unsigned} type is being used. Whenever a pass overflows, it will be as if it was reset to a small value and that process will be executed very often until the other processes start to be chosen again. A good solution for this problem wasn't found.
+One problem the stride scheduler suffers from is when the pass overflows the limit of the variable holding it. In this case, this is ignored because, although not solving the problem, an \texttt{unsigned} type is being used. Whenever a pass overflows, it will be as if it was reset to a small value. When that happens, such process will be executed very often until its pass gets to a value that allows the other processes to start being chosen again. A good solution for this problem wasn't found.
 
 \section{Statistical analysis and conclusion}
-After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{tests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process received $(16 - i + 1) \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
+After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{tests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process receives $(16 - i + 1) \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
 
 \begin{figure}[h]
 \includegraphics[scale=0.8]{tests-crop}

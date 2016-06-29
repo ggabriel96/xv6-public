@@ -34,4 +34,4 @@ x, y16, "-s;64 tickets;", "linewidth", 2, "markersize", 3);
 xlabel("Test number");
 ylabel("Finish position");
 legend("location", "NorthEastOutside");
-axis("ij")
+axis("ij");
