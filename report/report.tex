@@ -15,7 +15,7 @@
 
 
 \address{Federal University of Fronteira Sul (UFFS)\\
-  Mailbox 181 -- 89.802-112 -- Chapecó -- SC -- Brazil % chktex 8
+  Mailbox 181 -- 89.802-112 -- Chapecï¿½ -- SC -- Brazil % chktex 8
   \email{g7.galli96@gmail.com}}
 
 \begin{document}
@@ -195,15 +195,20 @@ One problem the stride scheduler suffers from is when the pass overflows the lim
 After all the modifications presented here, it is time to see if the scheduler is working as intended. To test it, the \texttt{tests.c} file was created and configured as an xv6 executable just like \texttt{usertests.c}. It works like the following: 16 processes are created with the job of counting from 0 up to $10^8$. The $i^{th}$ process receives $(16 - i + 1) \times NPROC$ tickets. This test was executed 100 times. A \texttt{cprintf} was purposely added to the \texttt{exit} function, in the \texttt{proc.c} file, to print the amount of tickets a process that just terminated had. This was later processed in the host operating system by an ordinary C program that produced output conforming to the GNU Octave syntax to generate the following graphic showing the order in which those processes terminated:
 
 \begin{figure}[h]
-\includegraphics[scale=0.8]{tests-crop}
+\caption{Lottery scheduler test results}
+\includegraphics[scale=0.8]{tests-lottery-crop}
+\centering
+\end{figure}
+
+\begin{figure}[h]
+\caption{Stride scheduler test results}
+\includegraphics[scale=0.8]{tests-stride-crop}
 \centering
 \end{figure}
 
 Please note that the \emph{x-axis} represent the test number and the \emph{y-axis} is the position between 1 and 16 that a process with a number of tickets (represented by the color) terminated. Also take into account that the processes were created sequentially from the one holding the highest amount of tickets to the one holding the least amount of tickets.
 
-As the lottery scheduler is a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability.
-
-Despite that, it is clear that the processes with the highest amount of tickets terminated first (again, with some variation among those with a similar quantity of tickets), and the ones with the lowest amount of tickets terminated last, as we expected.
+As the lottery scheduler is a random algorithm, there is no guarantee in the order of execution of the processes. The only sure thing is that the higher the amount of tickets, the higher the probability of being chosen to run and the larger the amount of tests, the more this order will converge to the pattern established by that probability. Despite that, it is clear that the processes with the highest amount of tickets terminated first (again, with some variation among those with a similar quantity of tickets), and the ones with the lowest amount of tickets terminated last, as we expected.
 
 Differently, being a deterministic algorithm, the stride scheduler has a more standardized behavior: a process with a higher amount of tickets than another process always finished its execution before.
 

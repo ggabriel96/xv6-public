@@ -30,7 +30,7 @@ main(void)
   }
   printf("plot(");
   for (i = 0; i < NPROC; i++)
-    printf("x, y%d, \"-s;%d tickets;\", \"linewidth\", 1, \"markersize\", 1%s", i + 1, ticket[i], i + 1 < NPROC ? ",\n" : ");\n");
+    printf("x, y%d, \"-s;%d tickets;\", \"linewidth\", 1, \"markersize\", 2%s", i + 1, ticket[i], i + 1 < NPROC ? ",\n" : ");\n");
   printf("xlabel(\"Test number\");\n");
   printf("ylabel(\"Finish position\");\n");
   printf("legend(\"location\", \"NorthEastOutside\");\n");
