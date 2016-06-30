@@ -1,0 +1,8 @@
+# Clonar o repositório:
+https://github.com/ggabriel96/xv6-public.git
+
+# Alterar o branch para 'stride':
+git checkout stride
+
+# Relatório:
+report/report.pdf
